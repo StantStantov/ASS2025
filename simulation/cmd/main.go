@@ -2,13 +2,18 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/signal"
+	"strconv"
 	"time"
+
+	"github.com/StantStantov/rps/swamp/logging"
+	"github.com/StantStantov/rps/swamp/logging/logfmt"
 )
 
 func main() {
+	logger := logging.NewLogger(os.Stdout, logfmt.MainFormat, logging.LevelDebug, 256)
+
 	ctx, stopCtx := signal.NotifyContext(context.Background(), os.Kill, os.Interrupt)
 	defer stopCtx()
 
@@ -19,7 +24,12 @@ func main() {
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Println("done")
+			logging.GetThenSendEvent(
+				logger,
+				logging.LevelDebug,
+				"stopped simulation",
+				logging.NilFormat,
+			)
 
 			return
 		default:
@@ -33,7 +43,15 @@ func main() {
 				lag -= msPerUpdate
 			}
 
-			fmt.Println(current, elapsed)
+			logging.GetThenSendEvent(
+				logger,
+				logging.LevelDebug,
+				"tick passed",
+				func(event *logging.Event, level logging.Level) error {
+					logfmt.String(event, "tick.elapsed_from_previous", strconv.FormatFloat(elapsed, 'f', 3, 64))
+					return nil
+				},
+			)
 		}
 	}
 }
