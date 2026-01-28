@@ -1,19 +1,21 @@
 package agents
 
 import (
+	"StantStantov/ASS/internal/models"
+	"StantStantov/ASS/internal/pools"
 	"math/rand"
-	"sync"
 
 	"github.com/StantStantov/rps/swamp/logging"
 	"github.com/StantStantov/rps/swamp/logging/logfmt"
 )
 
 type AgentSystem struct {
-	AgentsIds []AgentId
+	AgentsIds               []AgentId
+	MinChanceToCrash        float32
 
-	MinChanceToCrash float32
-
-	Pool *arrayPool
+	MachineInfoBatchChannel chan []models.MachineInfo
+	ArrayPool *pools.ArrayPool[AgentId]
+	BatchPool *pools.ArrayPool[models.MachineInfo]
 
 	Logger *logging.Logger
 }
@@ -23,6 +25,9 @@ type AgentId = uint64
 func NewAgentSystem(
 	capacity uint64,
 	minChanceToCrash float32,
+	machineInfoBatchChannel chan []models.MachineInfo,
+	arrayPool *pools.ArrayPool[AgentId],
+	batchPool *pools.ArrayPool[models.MachineInfo],
 	logger *logging.Logger,
 ) *AgentSystem {
 	system := &AgentSystem{}
@@ -31,9 +36,11 @@ func NewAgentSystem(
 	for i := range capacity {
 		system.AgentsIds[i] = AgentId(i)
 	}
+	system.MachineInfoBatchChannel = machineInfoBatchChannel
 	system.MinChanceToCrash = minChanceToCrash
 
-	system.Pool = newArrayPool(capacity)
+	system.ArrayPool = arrayPool
+	system.BatchPool = batchPool
 
 	system.Logger = logging.NewChildLogger(logger, func(event *logging.Event) {
 		logfmt.String(event, "from", "agent_system")
@@ -43,15 +50,18 @@ func NewAgentSystem(
 }
 
 func ProcessAgentSystem(system *AgentSystem) {
-	arrays := getArrays(system.Pool, 2)
-	aliveServices := arrays[0]
-	deadServices := arrays[1]
+	aliveServices := pools.GetArray(system.ArrayPool)
+	deadServices := pools.GetArray(system.ArrayPool)
+	machineInfoBatch := pools.GetArray(system.BatchPool)
 	for _, id := range system.AgentsIds {
 		currentChance := rand.Float32()
 
 		crashed := currentChance >= system.MinChanceToCrash
 		if crashed {
 			deadServices = append(deadServices, id)
+
+			machineInfo := models.MachineInfo{Id: id}
+			machineInfoBatch = append(machineInfoBatch, machineInfo)
 		} else {
 			aliveServices = append(aliveServices, id)
 		}
@@ -61,55 +71,15 @@ func ProcessAgentSystem(system *AgentSystem) {
 		system.Logger,
 		"received new statuses",
 		func(event *logging.Event, level logging.Level) error {
-			logfmt.Unsigneds(event, "agents.alive", aliveServices...)
-			logfmt.Unsigneds(event, "agents.dead", deadServices...)
+			logfmt.Integer(event, "agents.alive.amount", len(aliveServices))
+			logfmt.Unsigneds(event, "agents.alive.ids", aliveServices...)
+			logfmt.Integer(event, "agents.dead.amount", len(deadServices))
+			logfmt.Unsigneds(event, "agents.dead.ids", deadServices...)
 			return nil
 		},
 	)
 
-	putArrays(system.Pool, arrays...)
-}
+	system.MachineInfoBatchChannel <- machineInfoBatch
 
-type arrayPool struct {
-	Arrays *sync.Pool
-	MaxCapacity uint64
-}
-
-func newArrayPool(maxCapacity uint64) *arrayPool {
-	arrayPool := &arrayPool{}
-
-	arrayPool.Arrays = &sync.Pool{
-		New: func() any {
-			return newArray(maxCapacity)
-		},
-	}
-	arrayPool.MaxCapacity = maxCapacity
-
-	return arrayPool
-}
-
-func newArray(capacity uint64) []AgentId {
-	return make([]AgentId, 0, capacity)
-}
-
-func getArrays(pool *arrayPool, amount uint64) [][]AgentId {
-	arrays := make([][]AgentId, amount)
-	for i := range amount {
-		got := pool.Arrays.Get()
-		array, ok := got.([]AgentId)
-		if !ok {
-			arrays[i] = nil
-		} else {
-			arrays[i] = array
-		}
-	}
-
-	return arrays
-}
-
-func putArrays(pool *arrayPool, arrays ...[]AgentId) {
-	for _, array := range arrays {
-		array = array[:0:pool.MaxCapacity]
-		pool.Arrays.Put(array)
-	}
+	pools.PutArrays(system.ArrayPool, aliveServices, deadServices)
 }

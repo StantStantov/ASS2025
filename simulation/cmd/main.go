@@ -2,6 +2,9 @@ package main
 
 import (
 	"StantStantov/ASS/internal/agents"
+	"StantStantov/ASS/internal/dispatchers"
+	"StantStantov/ASS/internal/models"
+	"StantStantov/ASS/internal/pools"
 	"context"
 	"os"
 	"os/signal"
@@ -16,11 +19,28 @@ func main() {
 	defer stopCtx()
 
 	agentsAmount := 4
-
+	chanceToCrash := 0.5
 
 	logger := logging.NewLogger(os.Stdout, logfmt.MainFormat, logging.LevelDebug, 256)
 
-	agentSystem := agents.NewAgentSystem(uint64(agentsAmount), 0.5, logger)
+	arrayPool := pools.NewArrayPool[agents.AgentId](uint64(agentsAmount))
+	batchPool := pools.NewArrayPool[models.MachineInfo](1)
+
+	machineInfoBatchChannel := make(chan []models.MachineInfo, agentsAmount)
+
+	agentSystem := agents.NewAgentSystem(
+		uint64(agentsAmount),
+		float32(chanceToCrash),
+		machineInfoBatchChannel,
+		arrayPool,
+		batchPool,
+		logger,
+	)
+	dispatchSystem := dispatchers.NewDispatchSystem(
+		machineInfoBatchChannel,
+		batchPool,
+		logger,
+	)
 
 	msPerUpdate := 1.0
 	previous := timeToFloat64(time.Now())
@@ -43,6 +63,7 @@ func main() {
 
 			for lag >= msPerUpdate {
 				agents.ProcessAgentSystem(agentSystem)
+				dispatchers.ProcessDispatchSystem(dispatchSystem)
 
 				lag -= msPerUpdate
 			}
