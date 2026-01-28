@@ -1,5 +1,0 @@
-build:
-  go build -o tmp/simulation ./cmd/main.go
-
-run:
-  ./tmp/simulation

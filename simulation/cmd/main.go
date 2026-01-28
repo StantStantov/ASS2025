@@ -1,10 +1,10 @@
 package main
 
 import (
+	"StantStantov/ASS/internal/agents"
 	"context"
 	"os"
 	"os/signal"
-	"strconv"
 	"time"
 
 	"github.com/StantStantov/rps/swamp/logging"
@@ -12,21 +12,24 @@ import (
 )
 
 func main() {
-	logger := logging.NewLogger(os.Stdout, logfmt.MainFormat, logging.LevelDebug, 256)
-
 	ctx, stopCtx := signal.NotifyContext(context.Background(), os.Kill, os.Interrupt)
 	defer stopCtx()
 
-	msPerUpdate := 0.01
+	agentsAmount := 4
 
+
+	logger := logging.NewLogger(os.Stdout, logfmt.MainFormat, logging.LevelDebug, 256)
+
+	agentSystem := agents.NewAgentSystem(uint64(agentsAmount), 0.5, logger)
+
+	msPerUpdate := 1.0
 	previous := timeToFloat64(time.Now())
 	lag := 0.0
 	for {
 		select {
 		case <-ctx.Done():
-			logging.GetThenSendEvent(
+			logging.GetThenSendDebug(
 				logger,
-				logging.LevelDebug,
 				"stopped simulation",
 				logging.NilFormat,
 			)
@@ -39,19 +42,10 @@ func main() {
 			lag += elapsed
 
 			for lag >= msPerUpdate {
-				// update
+				agents.ProcessAgentSystem(agentSystem)
+
 				lag -= msPerUpdate
 			}
-
-			logging.GetThenSendEvent(
-				logger,
-				logging.LevelDebug,
-				"tick passed",
-				func(event *logging.Event, level logging.Level) error {
-					logfmt.String(event, "tick.elapsed_from_previous", strconv.FormatFloat(elapsed, 'f', 3, 64))
-					return nil
-				},
-			)
 		}
 	}
 }
