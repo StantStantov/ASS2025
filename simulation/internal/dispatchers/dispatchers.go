@@ -1,7 +1,7 @@
 package dispatchers
 
 import (
-	"StantStantov/ASS/internal/models"
+	"StantStantov/ASS/internal/buffer"
 	"StantStantov/ASS/internal/pools"
 
 	"github.com/StantStantov/rps/swamp/logging"
@@ -9,23 +9,23 @@ import (
 )
 
 type DispatchSystem struct {
-	MachineInfoBatchChannel chan []models.MachineInfo
+	Buffer *buffer.BufferSystem
 
-	BatchPool *pools.ArrayPool[models.MachineInfo]
+	JobPool *pools.JobPool
 
-	Logger    *logging.Logger
+	Logger *logging.Logger
 }
 
 func NewDispatchSystem(
-	machineInfoBatchChannel chan []models.MachineInfo,
-	batchPool *pools.ArrayPool[models.MachineInfo],
+	buffer *buffer.BufferSystem,
+	jobPool *pools.JobPool,
 	logger *logging.Logger,
 ) *DispatchSystem {
 	system := &DispatchSystem{}
 
-	system.MachineInfoBatchChannel = machineInfoBatchChannel
+	system.Buffer = buffer
 
-	system.BatchPool = batchPool
+	system.JobPool = jobPool
 
 	system.Logger = logging.NewChildLogger(logger, func(event *logging.Event) {
 		logfmt.String(event, "from", "dispatch_system")
@@ -35,25 +35,24 @@ func NewDispatchSystem(
 }
 
 func ProcessDispatchSystem(system *DispatchSystem) {
-	receivedAmount := len(system.MachineInfoBatchChannel)
-	for range receivedAmount {
-		machineInfoBatch := <-system.MachineInfoBatchChannel
+	jobs := buffer.DequeueAllFromBuffer(system.Buffer)
 
-		logging.GetThenSendDebug(
-			system.Logger,
-			"received machine info batch",
-			func(event *logging.Event, level logging.Level) error {
-				ids := make([]uint64, len(machineInfoBatch))
-				for i, info := range machineInfoBatch {
-					ids[i] = info.Id
-				}
+	logging.GetThenSendInfo(
+		system.Logger,
+		"dispatched jobs",
+		func(event *logging.Event, level logging.Level) error {
+			ids := make([]uint64, len(jobs))
+			amounts := make([]int, len(jobs))
+			for i, job := range jobs {
+				ids[i] = job.Id
+				amounts[i] = len(job.Alerts)
+			}
 
-				logfmt.Integer(event, "machines.amount", len(machineInfoBatch))
-				logfmt.Unsigneds(event, "machines.ids", ids...)
-				return nil
-			},
-		)
+			logfmt.Unsigneds(event, "jobs.ids", ids...)
+			logfmt.Integers(event, "jobs.alerts.amount", amounts...)
+			return nil
+		},
+	)
 
-		pools.PutArrays(system.BatchPool, machineInfoBatch)
-	}
+	pools.PutJobs(system.JobPool, jobs...)
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"StantStantov/ASS/internal/agents"
+	"StantStantov/ASS/internal/buffer"
 	"StantStantov/ASS/internal/dispatchers"
 	"StantStantov/ASS/internal/models"
 	"StantStantov/ASS/internal/pools"
@@ -24,21 +25,22 @@ func main() {
 	logger := logging.NewLogger(os.Stdout, logfmt.MainFormat, logging.LevelDebug, 256)
 
 	arrayPool := pools.NewArrayPool[agents.AgentId](uint64(agentsAmount))
-	batchPool := pools.NewArrayPool[models.MachineInfo](1)
+	jobsPool := pools.NewArrayPool[models.Job](uint64(agentsAmount))
+	jobPool := pools.NewJobPool(1)
 
-	machineInfoBatchChannel := make(chan []models.MachineInfo, agentsAmount)
-
+	bufferSystem := buffer.NewBufferSystem(logger)
+	dispatchSystem := dispatchers.NewDispatchSystem(
+		bufferSystem,
+		jobPool,
+		logger,
+	)
 	agentSystem := agents.NewAgentSystem(
 		uint64(agentsAmount),
 		float32(chanceToCrash),
-		machineInfoBatchChannel,
+		bufferSystem,
 		arrayPool,
-		batchPool,
-		logger,
-	)
-	dispatchSystem := dispatchers.NewDispatchSystem(
-		machineInfoBatchChannel,
-		batchPool,
+		jobsPool,
+		jobPool,
 		logger,
 	)
 
