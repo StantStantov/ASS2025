@@ -6,6 +6,7 @@ import (
 	"StantStantov/ASS/internal/dispatchers"
 	"StantStantov/ASS/internal/models"
 	"StantStantov/ASS/internal/pools"
+	"StantStantov/ASS/internal/responders"
 	"context"
 	"os"
 	"os/signal"
@@ -20,17 +21,23 @@ func main() {
 	defer stopCtx()
 
 	agentsAmount := 4
+	respondersAmount := 4
 	chanceToCrash := 0.5
+	chanceToHandle := 0.5
 
 	logger := logging.NewLogger(os.Stdout, logfmt.MainFormat, logging.LevelDebug, 256)
 
-	arrayPool := pools.NewArrayPool[agents.AgentId](uint64(agentsAmount))
+	agentsIdsPool := pools.NewArrayPool[agents.AgentId](uint64(agentsAmount))
+	respondersIdsPool := pools.NewArrayPool[models.ResponderId](uint64(respondersAmount))
 	jobsPool := pools.NewArrayPool[models.Job](uint64(agentsAmount))
 	jobPool := pools.NewJobPool(1)
 
 	bufferSystem := buffer.NewBufferSystem(logger)
-	dispatchSystem := dispatchers.NewDispatchSystem(
-		bufferSystem,
+
+	respondersSystem := responders.NewRespondersSystem(
+		uint64(agentsAmount),
+		float32(chanceToHandle),
+		respondersIdsPool,
 		jobPool,
 		logger,
 	)
@@ -38,9 +45,14 @@ func main() {
 		uint64(agentsAmount),
 		float32(chanceToCrash),
 		bufferSystem,
-		arrayPool,
+		agentsIdsPool,
 		jobsPool,
 		jobPool,
+		logger,
+	)
+	dispatchSystem := dispatchers.NewDispatchSystem(
+		bufferSystem,
+		respondersSystem,
 		logger,
 	)
 
@@ -66,6 +78,7 @@ func main() {
 			for lag >= msPerUpdate {
 				agents.ProcessAgentSystem(agentSystem)
 				dispatchers.ProcessDispatchSystem(dispatchSystem)
+				responders.ProcessRespondersSystem(respondersSystem)
 
 				lag -= msPerUpdate
 			}

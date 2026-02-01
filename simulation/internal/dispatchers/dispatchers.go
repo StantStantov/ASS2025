@@ -2,7 +2,7 @@ package dispatchers
 
 import (
 	"StantStantov/ASS/internal/buffer"
-	"StantStantov/ASS/internal/pools"
+	"StantStantov/ASS/internal/responders"
 
 	"github.com/StantStantov/rps/swamp/logging"
 	"github.com/StantStantov/rps/swamp/logging/logfmt"
@@ -11,21 +11,20 @@ import (
 type DispatchSystem struct {
 	Buffer *buffer.BufferSystem
 
-	JobPool *pools.JobPool
+	Responders *responders.RespondersSystem
 
 	Logger *logging.Logger
 }
 
 func NewDispatchSystem(
 	buffer *buffer.BufferSystem,
-	jobPool *pools.JobPool,
+	responders *responders.RespondersSystem,
 	logger *logging.Logger,
 ) *DispatchSystem {
 	system := &DispatchSystem{}
 
 	system.Buffer = buffer
-
-	system.JobPool = jobPool
+	system.Responders = responders
 
 	system.Logger = logging.NewChildLogger(logger, func(event *logging.Event) {
 		logfmt.String(event, "from", "dispatch_system")
@@ -36,6 +35,8 @@ func NewDispatchSystem(
 
 func ProcessDispatchSystem(system *DispatchSystem) {
 	jobs := buffer.DequeueAllFromBuffer(system.Buffer)
+
+	responders.SendJobsToResponder(system.Responders, jobs...)
 
 	logging.GetThenSendInfo(
 		system.Logger,
@@ -53,6 +54,4 @@ func ProcessDispatchSystem(system *DispatchSystem) {
 			return nil
 		},
 	)
-
-	pools.PutJobs(system.JobPool, jobs...)
 }
