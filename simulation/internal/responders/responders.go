@@ -1,6 +1,7 @@
 package responders
 
 import (
+	"StantStantov/ASS/internal/dispatchers"
 	"StantStantov/ASS/internal/models"
 	"StantStantov/ASS/internal/pools"
 	"iter"
@@ -13,14 +14,15 @@ import (
 type RespondersSystem struct {
 	Responders        []models.ResponderId
 	RespondersInfo    []models.ResponderInfo
-	RespondersJob     []models.Job
+	RespondersJob     []*models.Job
 	MinChanceToHandle float32
 
 	FreeResponders *responderList
 	BusyResponders *responderList
 
+	Dispatcher *dispatchers.DispatchSystem
+
 	ArrayPool *pools.ArrayPool[models.ResponderId]
-	JobPool   *pools.JobPool
 
 	Logger *logging.Logger
 }
@@ -28,15 +30,15 @@ type RespondersSystem struct {
 func NewRespondersSystem(
 	capacity uint64,
 	minChanceToHandle float32,
+	dispatcher *dispatchers.DispatchSystem,
 	arrayPool *pools.ArrayPool[models.ResponderId],
-	jobPool *pools.JobPool,
 	logger *logging.Logger,
 ) *RespondersSystem {
 	system := &RespondersSystem{}
 
 	system.Responders = make([]models.ResponderId, capacity)
 	system.RespondersInfo = make([]models.ResponderInfo, capacity)
-	system.RespondersJob = make([]models.Job, capacity)
+	system.RespondersJob = make([]*models.Job, capacity)
 	for i := range system.Responders {
 		system.Responders[i] = models.ResponderId(i)
 		system.RespondersInfo[i] = models.ResponderInfo{}
@@ -47,8 +49,9 @@ func NewRespondersSystem(
 	system.BusyResponders = newResponderList()
 	pushResponders(system.FreeResponders, system.Responders...)
 
+	system.Dispatcher = dispatcher
+
 	system.ArrayPool = arrayPool
-	system.JobPool = jobPool
 
 	system.Logger = logging.NewChildLogger(logger, func(event *logging.Event) {
 		logfmt.String(event, "from", "responders_system")
@@ -57,7 +60,8 @@ func NewRespondersSystem(
 	return system
 }
 
-func SendJobsToResponder(system *RespondersSystem, jobs ...models.Job) {
+func ProcessRespondersSystem(system *RespondersSystem) {
+	jobs := dispatchers.GetFreeJobs(system.Dispatcher, system.FreeResponders.Length)
 	for _, job := range jobs {
 		freeResponder, ok := popResponder(system.FreeResponders)
 		if !ok {
@@ -68,23 +72,24 @@ func SendJobsToResponder(system *RespondersSystem, jobs ...models.Job) {
 
 		pushResponders(system.BusyResponders, freeResponder)
 	}
-}
 
-func ProcessRespondersSystem(system *RespondersSystem) {
 	freedResponders := pools.GetArray(system.ArrayPool)
 	stillBusyResponders := pools.GetArray(system.ArrayPool)
 	for id := range popAllresponders(system.BusyResponders) {
-		jobToDo := system.RespondersJob[id]
+		responderJob := system.RespondersJob[id]
 
 		currentChance := rand.Float32()
 		if currentChance >= system.MinChanceToHandle {
 			freedResponders = append(freedResponders, id)
 
-			pools.PutJobs(system.JobPool, jobToDo)
+			dispatchers.PutBusyJobs(system.Dispatcher, responderJob)
 		} else {
 			stillBusyResponders = append(stillBusyResponders, id)
 		}
 	}
+
+	pushResponders(system.FreeResponders, freedResponders...)
+	pushResponders(system.BusyResponders, stillBusyResponders...)
 
 	logging.GetThenSendInfo(
 		system.Logger,
@@ -97,9 +102,6 @@ func ProcessRespondersSystem(system *RespondersSystem) {
 			return nil
 		},
 	)
-
-	pushResponders(system.FreeResponders, freedResponders...)
-	pushResponders(system.BusyResponders, stillBusyResponders...)
 
 	pools.PutArrays(system.ArrayPool, freedResponders, stillBusyResponders)
 }
@@ -147,21 +149,22 @@ func popResponder(list *responderList) (models.ResponderId, bool) {
 	head := list.Head
 	tail := list.Tail
 	next := head.Next
-	if head == tail {
-		if next == nil {
-			return 0, false
+	for {
+		if head == tail {
+			if next == nil {
+				return 0, false
+			}
+
+			tail.Next = next
+		} else {
+			freeId = next.Value
+
+			list.Head = next
+			list.Length--
+
+			return freeId, true
 		}
-
-		tail.Next = next
-	} else {
-		freeId = next.Value
-
-		list.Head = next
-		list.Length--
-
 	}
-
-	return freeId, true
 }
 
 func popAllresponders(list *responderList) iter.Seq[models.ResponderId] {

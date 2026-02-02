@@ -19,62 +19,24 @@ func TestBuffer(t *testing.T) {
 		128,
 	)
 
-	t.Run("enqueue and dequeue", func(t *testing.T) {
-		t.Parallel()
-
-		wantLength := 32
-		bufferSystem := buffer.NewBufferSystem(logger)
-		multipleJobs := make([]models.Job, wantLength)
-		for i := range wantLength {
-			multipleJobs[i] = models.Job{Id: uint64(i), Alerts: make([]models.MachineInfo, 0)}
-		}
-
-		for _, job := range multipleJobs {
-			buffer.EnqueueIntoBuffer(bufferSystem, job)
-		}
-
-		gotLength := int(bufferSystem.Length)
-		if wantLength != gotLength {
-			t.Fatalf("%d != %d", wantLength, gotLength)
-		}
-
-		current := bufferSystem.Head
-		for current != nil {
-			wantJob := multipleJobs[current.Job.Id]
-			gotJob := buffer.DequeueFromBuffer(bufferSystem)
-			if wantJob.Id != gotJob.Id {
-				t.Fatalf("%v != %v", wantJob, gotJob)
-			}
-
-			current = current.Next
-		}
-
-		wantLength = 0
-		gotLength = int(bufferSystem.Length)
-		if wantLength != gotLength {
-			t.Fatalf("%d != %d", wantLength, gotLength)
-		}
-	})
 	t.Run("enqueue and dequeue all", func(t *testing.T) {
 		t.Parallel()
 
 		wantLength := 32
-		bufferSystem := buffer.NewBufferSystem(logger)
-		multipleJobs := make([]models.Job, wantLength)
+		bufferSystem := buffer.NewBufferSystem(uint64(wantLength), logger)
+		multipleJobs := make([]*models.Job, wantLength)
 		for i := range wantLength {
-			multipleJobs[i] = models.Job{Id: uint64(i), Alerts: make([]models.MachineInfo, 0)}
+			multipleJobs[i] = &models.Job{Id: uint64(i), Alerts: make([]models.MachineInfo, 0)}
 		}
 
-		for _, job := range multipleJobs {
-			buffer.EnqueueIntoBuffer(bufferSystem, job)
-		}
+		buffer.EnqueueIntoBuffer(bufferSystem, multipleJobs...)
 
 		gotLength := int(bufferSystem.Length)
 		if wantLength != gotLength {
 			t.Fatalf("%d != %d", wantLength, gotLength)
 		}
 
-		gotJobs := buffer.DequeueAllFromBuffer(bufferSystem)
+		gotJobs, _ := buffer.GetMultipleFromBuffer(bufferSystem, uint64(wantLength))
 		for i, gotJob := range gotJobs {
 			wantJob := multipleJobs[i]
 			if wantJob.Id != gotJob.Id {
@@ -82,7 +44,6 @@ func TestBuffer(t *testing.T) {
 			}
 		}
 
-		wantLength = 0
 		gotLength = int(bufferSystem.Length)
 		if wantLength != gotLength {
 			t.Fatalf("%d != %d", wantLength, gotLength)
@@ -92,16 +53,17 @@ func TestBuffer(t *testing.T) {
 		t.Parallel()
 
 		wantLength := 32
-		bufferSystem := buffer.NewBufferSystem(logger)
-		multipleJobs := make([]models.Job, wantLength)
+		bufferSystem := buffer.NewBufferSystem(uint64(wantLength), logger)
+		multipleJobs := make([]*models.Job, wantLength)
 		for i := range wantLength {
-			multipleJobs[i] = models.Job{Id: uint64(i), Alerts: make([]models.MachineInfo, 0)}
+			multipleJobs[i] = &models.Job{Id: uint64(i), Alerts: make([]models.MachineInfo, 0)}
 		}
 
+		chunkLength := 8
 		wg := &sync.WaitGroup{}
-		for _, job := range multipleJobs {
+		for jobs := range slices.Chunk(multipleJobs, chunkLength) {
 			wg.Go(func() {
-				buffer.EnqueueIntoBuffer(bufferSystem, job)
+				buffer.EnqueueIntoBuffer(bufferSystem, jobs...)
 			})
 		}
 		wg.Wait()
@@ -111,9 +73,9 @@ func TestBuffer(t *testing.T) {
 			t.Fatalf("%d != %d", wantLength, gotLength)
 		}
 
-		gotJobs := buffer.DequeueAllFromBuffer(bufferSystem)
+		gotJobs, _ := buffer.GetMultipleFromBuffer(bufferSystem, uint64(wantLength))
 		for _, gotJob := range gotJobs {
-			contains := slices.ContainsFunc(multipleJobs, func(e models.Job) bool {
+			contains := slices.ContainsFunc(multipleJobs, func(e *models.Job) bool {
 				return e.Id == gotJob.Id
 			})
 			if !contains {

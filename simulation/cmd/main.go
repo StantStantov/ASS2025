@@ -20,39 +20,38 @@ func main() {
 	ctx, stopCtx := signal.NotifyContext(context.Background(), os.Kill, os.Interrupt)
 	defer stopCtx()
 
-	agentsAmount := 4
-	respondersAmount := 4
+	agentsAmount := uint64(4)
+	respondersAmount := uint64(4)
 	chanceToCrash := 0.5
 	chanceToHandle := 0.5
 
 	logger := logging.NewLogger(os.Stdout, logfmt.MainFormat, logging.LevelDebug, 256)
 
-	agentsIdsPool := pools.NewArrayPool[agents.AgentId](uint64(agentsAmount))
-	respondersIdsPool := pools.NewArrayPool[models.ResponderId](uint64(respondersAmount))
-	jobsPool := pools.NewArrayPool[models.Job](uint64(agentsAmount))
+	agentsIdsPool := pools.NewArrayPool[agents.AgentId](agentsAmount)
+	respondersIdsPool := pools.NewArrayPool[models.ResponderId](respondersAmount)
+	jobsPool := pools.NewArrayPool[*models.Job](agentsAmount)
 	jobPool := pools.NewJobPool(1)
 
-	bufferSystem := buffer.NewBufferSystem(logger)
-
-	respondersSystem := responders.NewRespondersSystem(
-		uint64(agentsAmount),
-		float32(chanceToHandle),
-		respondersIdsPool,
-		jobPool,
+	bufferSystem := buffer.NewBufferSystem(agentsAmount, logger)
+	dispatchSystem := dispatchers.NewDispatchSystem(
+		bufferSystem,
 		logger,
 	)
+
 	agentSystem := agents.NewAgentSystem(
-		uint64(agentsAmount),
+		agentsAmount,
 		float32(chanceToCrash),
-		bufferSystem,
+		dispatchSystem,
 		agentsIdsPool,
 		jobsPool,
 		jobPool,
 		logger,
 	)
-	dispatchSystem := dispatchers.NewDispatchSystem(
-		bufferSystem,
-		respondersSystem,
+	respondersSystem := responders.NewRespondersSystem(
+		respondersAmount,
+		float32(chanceToHandle),
+		dispatchSystem,
+		respondersIdsPool,
 		logger,
 	)
 
@@ -77,11 +76,13 @@ func main() {
 
 			for lag >= msPerUpdate {
 				agents.ProcessAgentSystem(agentSystem)
-				dispatchers.ProcessDispatchSystem(dispatchSystem)
 				responders.ProcessRespondersSystem(respondersSystem)
+
+				buffer.GetMultipleFromBuffer(bufferSystem, bufferSystem.Length)
 
 				lag -= msPerUpdate
 			}
+
 		}
 	}
 }

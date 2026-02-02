@@ -1,7 +1,7 @@
 package agents
 
 import (
-	"StantStantov/ASS/internal/buffer"
+	"StantStantov/ASS/internal/dispatchers"
 	"StantStantov/ASS/internal/models"
 	"StantStantov/ASS/internal/pools"
 	"math/rand"
@@ -14,9 +14,10 @@ type AgentSystem struct {
 	AgentsIds        []AgentId
 	MinChanceToCrash float32
 
-	Buffer    *buffer.BufferSystem
+	Dispatcher *dispatchers.DispatchSystem
+
 	ArrayPool *pools.ArrayPool[AgentId]
-	JobsPool  *pools.ArrayPool[models.Job]
+	JobsPool  *pools.ArrayPool[*models.Job]
 	JobPool   *pools.JobPool
 
 	Logger *logging.Logger
@@ -27,9 +28,9 @@ type AgentId = uint64
 func NewAgentSystem(
 	capacity uint64,
 	minChanceToCrash float32,
-	buffer *buffer.BufferSystem,
+	dispatcher *dispatchers.DispatchSystem,
 	arrayPool *pools.ArrayPool[AgentId],
-	jobsPool *pools.ArrayPool[models.Job],
+	jobsPool *pools.ArrayPool[*models.Job],
 	jobPool *pools.JobPool,
 	logger *logging.Logger,
 ) *AgentSystem {
@@ -41,7 +42,8 @@ func NewAgentSystem(
 	}
 	system.MinChanceToCrash = minChanceToCrash
 
-	system.Buffer = buffer
+	system.Dispatcher = dispatcher
+
 	system.ArrayPool = arrayPool
 	system.JobsPool = jobsPool
 	system.JobPool = jobPool
@@ -56,7 +58,7 @@ func NewAgentSystem(
 func ProcessAgentSystem(system *AgentSystem) {
 	aliveServices := pools.GetArray(system.ArrayPool)
 	deadServices := pools.GetArray(system.ArrayPool)
-	jobsToSend := pools.GetArray(system.JobsPool)
+	jobsToSave := pools.GetArray(system.JobsPool)
 	for _, id := range system.AgentsIds {
 		currentChance := rand.Float32()
 
@@ -65,11 +67,11 @@ func ProcessAgentSystem(system *AgentSystem) {
 			deadServices = append(deadServices, id)
 
 			machineInfo := models.MachineInfo{Id: id}
-			job := pools.GetJob(system.JobPool)
+			job := &models.Job{Id: 0, Alerts: nil}
 			job.Id = id
 			job.Alerts = append(job.Alerts, machineInfo)
 
-			jobsToSend = append(jobsToSend, job)
+			jobsToSave = append(jobsToSave, job)
 		} else {
 			aliveServices = append(aliveServices, id)
 		}
@@ -77,7 +79,7 @@ func ProcessAgentSystem(system *AgentSystem) {
 
 	logging.GetThenSendInfo(
 		system.Logger,
-		"received new statuses",
+		"polled agents for new statuses",
 		func(event *logging.Event, level logging.Level) error {
 			logfmt.Unsigneds(event, "agents.alive.ids", aliveServices...)
 			logfmt.Unsigneds(event, "agents.dead.ids", deadServices...)
@@ -85,8 +87,8 @@ func ProcessAgentSystem(system *AgentSystem) {
 		},
 	)
 
-	buffer.EnqueueIntoBuffer(system.Buffer, jobsToSend...)
+	dispatchers.SaveAlerts(system.Dispatcher, jobsToSave...)
 
 	pools.PutArrays(system.ArrayPool, aliveServices, deadServices)
-	pools.PutArrays(system.JobsPool, jobsToSend)
+	pools.PutArrays(system.JobsPool, jobsToSave)
 }

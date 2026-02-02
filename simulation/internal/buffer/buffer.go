@@ -1,6 +1,7 @@
 package buffer
 
 import (
+	"StantStantov/ASS/internal/collections"
 	"StantStantov/ASS/internal/models"
 	"sync"
 
@@ -12,17 +13,21 @@ type BufferSystem struct {
 	Head   *alertBucket
 	Length uint64
 
+	Free *collections.SparseSet[uint64]
+	Busy *collections.SparseSet[uint64]
+
 	Logger *logging.Logger
 
-	Mutex sync.Mutex
+	Mutex *sync.Mutex
 }
 
 type alertBucket struct {
 	Next *alertBucket
-	Job  models.Job
+	Job  *models.Job
 }
 
 func NewBufferSystem(
+	capacity uint64,
 	logger *logging.Logger,
 ) *BufferSystem {
 	system := &BufferSystem{}
@@ -31,14 +36,19 @@ func NewBufferSystem(
 	system.Head = bucket
 	system.Length = 0
 
+	system.Free = collections.NewSparseSet[uint64](capacity)
+	system.Busy = collections.NewSparseSet[uint64](capacity)
+
 	system.Logger = logging.NewChildLogger(logger, func(event *logging.Event) {
 		logfmt.String(event, "from", "buffer_system")
 	})
 
+	system.Mutex = &sync.Mutex{}
+
 	return system
 }
 
-func newAlertBucket(job models.Job) *alertBucket {
+func newAlertBucket(job *models.Job) *alertBucket {
 	bucket := &alertBucket{}
 
 	bucket.Job = job
@@ -46,7 +56,7 @@ func newAlertBucket(job models.Job) *alertBucket {
 	return bucket
 }
 
-func EnqueueIntoBuffer(system *BufferSystem, jobs ...models.Job) {
+func EnqueueIntoBuffer(system *BufferSystem, jobs ...*models.Job) {
 	system.Mutex.Lock()
 	defer system.Mutex.Unlock()
 
@@ -54,30 +64,125 @@ func EnqueueIntoBuffer(system *BufferSystem, jobs ...models.Job) {
 		switch system.Length {
 		case 0:
 			system.Head = newAlertBucket(job)
+			collections.MoveIntoSparseSet(system.Free, job.Id)
+			system.Length++
 		default:
+			isOld := false
+
 			prevBucket := system.Head
-			currentBucket := prevBucket
+			currentBucket := system.Head
 			for currentBucket != nil {
 				if currentBucket.Job.Id == job.Id {
 					currentBucket.Job.Alerts = append(currentBucket.Job.Alerts, job.Alerts...)
 
-					return
+					isOld = true
+
+					break
 				}
 
 				prevBucket = currentBucket
 				currentBucket = currentBucket.Next
 			}
 
-			prevBucket.Next = newAlertBucket(job)
+			if !isOld {
+				prevBucket.Next = newAlertBucket(job)
+				collections.MoveIntoSparseSet(system.Free, job.Id)
+				system.Length++
+			}
 		}
-		system.Length++
 	}
 
+	logBufferEnque(system.Logger, jobs...)
+}
+
+func GetMultipleFreeFromBuffer(system *BufferSystem, maxAmount uint64) ([]*models.Job, bool) {
+	system.Mutex.Lock()
+	defer system.Mutex.Unlock()
+
+	if system.Length == 0 {
+		return nil, false
+	}
+
+	minLength := min(system.Length, uint64(len(system.Free.Dense)), maxAmount)
+	ids := make([]uint64, 0, minLength)
+	allJobs := make([]*models.Job, 0, minLength)
+	currentBucket := system.Head
+	for currentBucket != nil {
+		currentJob := currentBucket.Job
+		currentId := currentJob.Id
+
+		exist := collections.IsExistInSparseSet(system.Free, currentId)
+		if exist {
+			ids = append(ids, currentId)
+			allJobs = append(allJobs, currentJob)
+		}
+		if len(allJobs) == int(minLength) {
+			break
+		}
+
+		currentBucket = currentBucket.Next
+	}
+
+	collections.RemoveFromSparseSet(system.Free, ids...)
+	collections.MoveIntoSparseSet(system.Busy, ids...)
+
+	logBufferGet(system.Logger, allJobs...)
+
+	return allJobs, true
+}
+
+func PutMultipleBusyIntoBuffer(system *BufferSystem, jobs ...*models.Job) {
+	system.Mutex.Lock()
+	defer system.Mutex.Unlock()
+
+	minLength := len(jobs)
+	ids := make([]uint64, minLength)
+	for i, job := range jobs {
+		ids[i] = job.Id
+	}
+
+	collections.RemoveFromSparseSet(system.Busy, ids...)
+	collections.MoveIntoSparseSet(system.Free, ids...)
+
+	logBufferPut(system.Logger, jobs...)
+}
+
+func GetMultipleFromBuffer(system *BufferSystem, maxAmount uint64) ([]*models.Job, bool) {
+	system.Mutex.Lock()
+	defer system.Mutex.Unlock()
+
+	if system.Length == 0 {
+		return nil, false
+	}
+
+	minLength := system.Length
+	ids := make([]uint64, 0, minLength)
+	allJobs := make([]*models.Job, 0, system.Length)
+	currentBucket := system.Head
+	for currentBucket != nil {
+		currentJob := currentBucket.Job
+		currentId := currentJob.Id
+
+		ids = append(ids, currentId)
+		allJobs = append(allJobs, currentJob)
+		if len(allJobs) == int(minLength) {
+			break
+		}
+
+		currentBucket = currentBucket.Next
+	}
+
+	logBufferGet(system.Logger, allJobs...)
+
+	return allJobs, true
+}
+
+func logBufferEnque(logger *logging.Logger, jobs ...*models.Job) {
 	logging.GetThenSendInfo(
-		system.Logger,
-		"enqueued into buffer new jobs",
+		logger,
+		"enqueued new alerts into buffer",
 		func(event *logging.Event, level logging.Level) error {
-			ids:= make([]uint64, len(jobs))
+			ids := make([]uint64, len(jobs))
 			amounts := make([]int, len(jobs))
 			for i, job := range jobs {
 				ids[i] = job.Id
@@ -92,57 +197,14 @@ func EnqueueIntoBuffer(system *BufferSystem, jobs ...models.Job) {
 	)
 }
 
-func DequeueFromBuffer(system *BufferSystem) models.Job {
-	system.Mutex.Lock()
-	defer system.Mutex.Unlock()
-
-	if system.Length == 0 {
-		return models.Job{}
-	}
-
-	job := system.Head.Job
-
-	nextBucket := system.Head.Next
-	system.Head = nextBucket
-	system.Length--
-
+func logBufferGet(logger *logging.Logger, jobs ...*models.Job) {
 	logging.GetThenSendInfo(
-		system.Logger,
-		"dequeued from buffer alerts",
+		logger,
+		"got alerts from buffer",
 		func(event *logging.Event, level logging.Level) error {
-			logfmt.Unsigneds(event, "jobs.ids", job.Id)
-			logfmt.Integers(event, "jobs.alerts.amounts", len(job.Alerts))
-			return nil
-		},
-	)
-
-	return job
-}
-
-func DequeueAllFromBuffer(system *BufferSystem) []models.Job {
-	system.Mutex.Lock()
-	defer system.Mutex.Unlock()
-
-	if system.Length == 0 {
-		return nil
-	}
-
-	allJobs := make([]models.Job, system.Length)
-	for i := range system.Length {
-		allJobs[i] = system.Head.Job
-
-		nextBucket := system.Head.Next
-		system.Head = nextBucket
-	}
-	system.Length = 0
-
-	logging.GetThenSendInfo(
-		system.Logger,
-		"dequeued from buffer alerts",
-		func(event *logging.Event, level logging.Level) error {
-			ids:= make([]uint64, len(allJobs))
-			amounts := make([]int, len(allJobs))
-			for i, job := range allJobs {
+			ids := make([]uint64, len(jobs))
+			amounts := make([]int, len(jobs))
+			for i, job := range jobs {
 				ids[i] = job.Id
 				amounts[i] = len(job.Alerts)
 			}
@@ -153,6 +215,24 @@ func DequeueAllFromBuffer(system *BufferSystem) []models.Job {
 			return nil
 		},
 	)
+}
 
-	return allJobs
+func logBufferPut(logger *logging.Logger, jobs ...*models.Job) {
+	logging.GetThenSendInfo(
+		logger,
+		"put alerts into buffer",
+		func(event *logging.Event, level logging.Level) error {
+			ids := make([]uint64, len(jobs))
+			amounts := make([]int, len(jobs))
+			for i, job := range jobs {
+				ids[i] = job.Id
+				amounts[i] = len(job.Alerts)
+			}
+
+			logfmt.Unsigneds(event, "jobs.ids", ids...)
+			logfmt.Integers(event, "jobs.alerts.amounts", amounts...)
+
+			return nil
+		},
+	)
 }
