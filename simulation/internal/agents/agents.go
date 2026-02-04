@@ -3,7 +3,7 @@ package agents
 import (
 	"StantStantov/ASS/internal/dispatchers"
 	"StantStantov/ASS/internal/models"
-	"StantStantov/ASS/internal/pools"
+	"StantStantov/ASS/internal/mempools"
 	"math/rand"
 
 	"github.com/StantStantov/rps/swamp/logging"
@@ -16,9 +16,8 @@ type AgentSystem struct {
 
 	Dispatcher *dispatchers.DispatchSystem
 
-	ArrayPool *pools.ArrayPool[AgentId]
-	JobsPool  *pools.ArrayPool[*models.Job]
-	JobPool   *pools.JobPool
+	ArrayPool *mempools.ArrayPool[AgentId]
+	JobsPool  *mempools.ArrayPool[*models.Job]
 
 	Logger *logging.Logger
 }
@@ -29,9 +28,8 @@ func NewAgentSystem(
 	capacity uint64,
 	minChanceToCrash float32,
 	dispatcher *dispatchers.DispatchSystem,
-	arrayPool *pools.ArrayPool[AgentId],
-	jobsPool *pools.ArrayPool[*models.Job],
-	jobPool *pools.JobPool,
+	arrayPool *mempools.ArrayPool[AgentId],
+	jobsPool *mempools.ArrayPool[*models.Job],
 	logger *logging.Logger,
 ) *AgentSystem {
 	system := &AgentSystem{}
@@ -46,7 +44,6 @@ func NewAgentSystem(
 
 	system.ArrayPool = arrayPool
 	system.JobsPool = jobsPool
-	system.JobPool = jobPool
 
 	system.Logger = logging.NewChildLogger(logger, func(event *logging.Event) {
 		logfmt.String(event, "from", "agent_system")
@@ -56,9 +53,9 @@ func NewAgentSystem(
 }
 
 func ProcessAgentSystem(system *AgentSystem) {
-	aliveServices := pools.GetArray(system.ArrayPool)
-	deadServices := pools.GetArray(system.ArrayPool)
-	jobsToSave := pools.GetArray(system.JobsPool)
+	aliveServices := mempools.GetArray(system.ArrayPool)
+	deadServices := mempools.GetArray(system.ArrayPool)
+	jobsToSave := mempools.GetArray(system.JobsPool)
 	for _, id := range system.AgentsIds {
 		currentChance := rand.Float32()
 
@@ -89,6 +86,6 @@ func ProcessAgentSystem(system *AgentSystem) {
 
 	dispatchers.SaveAlerts(system.Dispatcher, jobsToSave...)
 
-	pools.PutArrays(system.ArrayPool, aliveServices, deadServices)
-	pools.PutArrays(system.JobsPool, jobsToSave)
+	mempools.PutArrays(system.ArrayPool, aliveServices, deadServices)
+	mempools.PutArrays(system.JobsPool, jobsToSave)
 }

@@ -4,6 +4,7 @@ import (
 	"StantStantov/ASS/internal/agents"
 	"StantStantov/ASS/internal/buffer"
 	"StantStantov/ASS/internal/dispatchers"
+	"StantStantov/ASS/internal/mempools"
 	"StantStantov/ASS/internal/models"
 	"StantStantov/ASS/internal/pools"
 	"StantStantov/ASS/internal/responders"
@@ -27,14 +28,15 @@ func main() {
 
 	logger := logging.NewLogger(os.Stdout, logfmt.MainFormat, logging.LevelDebug, 256)
 
-	agentsIdsPool := pools.NewArrayPool[agents.AgentId](agentsAmount)
-	respondersIdsPool := pools.NewArrayPool[models.ResponderId](respondersAmount)
-	jobsPool := pools.NewArrayPool[*models.Job](agentsAmount)
-	jobPool := pools.NewJobPool(1)
+	agentsIdsPool := mempools.NewArrayPool[agents.AgentId](agentsAmount)
+	respondersIdsPool := mempools.NewArrayPool[models.ResponderId](respondersAmount)
+	jobsPool := mempools.NewArrayPool[*models.Job](agentsAmount)
 
 	bufferSystem := buffer.NewBufferSystem(agentsAmount, logger)
+	poolSystem := pools.NewPoolSystem(agentsAmount, logger)
 	dispatchSystem := dispatchers.NewDispatchSystem(
 		bufferSystem,
+		poolSystem,
 		logger,
 	)
 
@@ -44,7 +46,6 @@ func main() {
 		dispatchSystem,
 		agentsIdsPool,
 		jobsPool,
-		jobPool,
 		logger,
 	)
 	respondersSystem := responders.NewRespondersSystem(
@@ -78,11 +79,12 @@ func main() {
 				agents.ProcessAgentSystem(agentSystem)
 				responders.ProcessRespondersSystem(respondersSystem)
 
-				buffer.GetMultipleFromBuffer(bufferSystem, bufferSystem.Length)
+				currentLength := buffer.Length(bufferSystem)
+				tmp := make([]*models.Job, currentLength)
+				buffer.GetMultipleFromBuffer(bufferSystem, tmp)
 
 				lag -= msPerUpdate
 			}
-
 		}
 	}
 }

@@ -3,7 +3,7 @@ package responders
 import (
 	"StantStantov/ASS/internal/dispatchers"
 	"StantStantov/ASS/internal/models"
-	"StantStantov/ASS/internal/pools"
+	"StantStantov/ASS/internal/mempools"
 	"iter"
 	"math/rand"
 
@@ -22,7 +22,7 @@ type RespondersSystem struct {
 
 	Dispatcher *dispatchers.DispatchSystem
 
-	ArrayPool *pools.ArrayPool[models.ResponderId]
+	ArrayPool *mempools.ArrayPool[models.ResponderId]
 
 	Logger *logging.Logger
 }
@@ -31,7 +31,7 @@ func NewRespondersSystem(
 	capacity uint64,
 	minChanceToHandle float32,
 	dispatcher *dispatchers.DispatchSystem,
-	arrayPool *pools.ArrayPool[models.ResponderId],
+	arrayPool *mempools.ArrayPool[models.ResponderId],
 	logger *logging.Logger,
 ) *RespondersSystem {
 	system := &RespondersSystem{}
@@ -73,8 +73,8 @@ func ProcessRespondersSystem(system *RespondersSystem) {
 		pushResponders(system.BusyResponders, freeResponder)
 	}
 
-	freedResponders := pools.GetArray(system.ArrayPool)
-	stillBusyResponders := pools.GetArray(system.ArrayPool)
+	freedResponders := mempools.GetArray(system.ArrayPool)
+	stillBusyResponders := mempools.GetArray(system.ArrayPool)
 	for id := range popAllresponders(system.BusyResponders) {
 		responderJob := system.RespondersJob[id]
 
@@ -103,7 +103,7 @@ func ProcessRespondersSystem(system *RespondersSystem) {
 		},
 	)
 
-	pools.PutArrays(system.ArrayPool, freedResponders, stillBusyResponders)
+	mempools.PutArrays(system.ArrayPool, freedResponders, stillBusyResponders)
 }
 
 type responderList struct {
