@@ -30,7 +30,7 @@ func main() {
 
 	agentsIdsPool := mempools.NewArrayPool[agents.AgentId](agentsAmount)
 	respondersIdsPool := mempools.NewArrayPool[models.ResponderId](respondersAmount)
-	jobsPool := mempools.NewArrayPool[*models.Job](agentsAmount)
+	jobsPool := mempools.NewArrayPool[models.Job](agentsAmount)
 
 	bufferSystem := buffer.NewBufferSystem(agentsAmount, logger)
 	poolSystem := pools.NewPoolSystem(agentsAmount, logger)
@@ -79,9 +79,7 @@ func main() {
 				agents.ProcessAgentSystem(agentSystem)
 				responders.ProcessRespondersSystem(respondersSystem)
 
-				currentLength := buffer.Length(bufferSystem)
-				tmp := make([]*models.Job, currentLength)
-				buffer.GetMultipleFromBuffer(bufferSystem, tmp)
+				buffer.LogAllFromBuffer(bufferSystem)
 
 				lag -= msPerUpdate
 			}

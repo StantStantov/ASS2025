@@ -14,7 +14,7 @@ import (
 type RespondersSystem struct {
 	Responders        []models.ResponderId
 	RespondersInfo    []models.ResponderInfo
-	RespondersJob     []*models.Job
+	RespondersJob     []models.Job
 	MinChanceToHandle float32
 
 	FreeResponders *responderList
@@ -38,7 +38,7 @@ func NewRespondersSystem(
 
 	system.Responders = make([]models.ResponderId, capacity)
 	system.RespondersInfo = make([]models.ResponderInfo, capacity)
-	system.RespondersJob = make([]*models.Job, capacity)
+	system.RespondersJob = make([]models.Job, capacity)
 	for i := range system.Responders {
 		system.Responders[i] = models.ResponderId(i)
 		system.RespondersInfo[i] = models.ResponderInfo{}
@@ -61,7 +61,8 @@ func NewRespondersSystem(
 }
 
 func ProcessRespondersSystem(system *RespondersSystem) {
-	jobs := dispatchers.GetFreeJobs(system.Dispatcher, system.FreeResponders.Length)
+	jobs := make([]models.Job, system.FreeResponders.Length)
+	jobs = dispatchers.GetFreeJobs(system.Dispatcher, jobs)
 	for _, job := range jobs {
 		freeResponder, ok := popResponder(system.FreeResponders)
 		if !ok {

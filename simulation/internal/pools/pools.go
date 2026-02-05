@@ -39,95 +39,74 @@ func NewPoolSystem(
 	return system
 }
 
-func MoveIfNewIntoPool(system *PoolSystem, jobs ...*models.Job) {
+func MoveIfNewIntoPool(system *PoolSystem, jobs ...models.Job) {
 	system.Mutex.Lock()
 	defer system.Mutex.Unlock()
 
 	listToPush := &doublyList{}
 
-	jobsFiltered := make([]*models.Job, 0, len(jobs))
+	idsFiltered := make([]uint64, 0, len(jobs))
 	nodesFiltered := make([]*poolNode, 0, len(jobs))
 	for _, job := range jobs {
-		existUnlocked := sparsemap.IsPresentInSparseMap(system.Unlocked, []bool{false}, job.Id)
-		existLocked := sparsemap.IsPresentInSparseMap(system.Locked, []bool{false}, job.Id)
+		jobId := job.Id
+		existUnlocked := sparsemap.IsPresentInSparseMap(system.Unlocked, []bool{false}, jobId)
+		existLocked := sparsemap.IsPresentInSparseMap(system.Locked, []bool{false}, jobId)
 		if !existUnlocked[0] && !existLocked[0] {
 			node := &poolNode{
 				Next:  nil,
 				Prev:  nil,
-				Value: job,
+				Value: jobId,
 			}
 			pushNodeIntoDoublyList(listToPush, node)
 
-			jobsFiltered = append(jobsFiltered, job)
+			idsFiltered = append(idsFiltered, jobId)
 			nodesFiltered = append(nodesFiltered, node)
 		}
 	}
 
-	idsFiltered := make([]uint64, len(jobs))
-	idsFiltered = models.JobsPtrToIds(jobs, idsFiltered)
-
 	pushListIntoDoublyList(system.List, listToPush)
 
 	oksMove := make([]bool, len(nodesFiltered))
-	sparsemap.MoveIntoSparseMap(system.Unlocked, oksMove, idsFiltered, nodesFiltered)
+	sparsemap.AddIntoSparseMap(system.Unlocked, oksMove, idsFiltered, nodesFiltered)
 
 	logging.GetThenSendInfo(
 		system.Logger,
 		"added new jobs into pool",
 		func(event *logging.Event, level logging.Level) error {
-			amounts := make([]int, len(jobsFiltered))
-			for i, job := range jobsFiltered {
-				amounts[i] = len(job.Alerts)
-			}
-
 			logfmt.Unsigneds(event, "jobs.ids", idsFiltered...)
-			logfmt.Integers(event, "jobs.alerts.amounts", amounts...)
 
 			return nil
 		},
 	)
 }
 
-func GetFromPool(system *PoolSystem, setBuffer []*models.Job) []*models.Job {
+func GetFromPool(system *PoolSystem, setBuffer []uint64) []uint64 {
 	system.Mutex.Lock()
 	defer system.Mutex.Unlock()
 
-	ids := make([]uint64, len(setBuffer))
-	nodes := make([]*poolNode, len(setBuffer))
-
 	dense := system.Unlocked.Dense
 	minLength := min(len(dense), len(setBuffer))
+	nodes := make([]*poolNode, minLength)
 	for i := range minLength {
 		entry := dense[i]
 		entryNode := entry.Value
-		job := entryNode.Value
-		jobId := job.Id
+		id := entryNode.Value
 
-		ids[i] = jobId
+		setBuffer[i] = id
 		nodes[i] = entryNode
-		setBuffer[i] = job
 	}
+	setBuffer = setBuffer[:minLength]
 
 	oksRemove := make([]bool, minLength)
-	sparsemap.RemoveFromSparseMap(system.Unlocked, oksRemove, ids...)
+	sparsemap.RemoveFromSparseMap(system.Unlocked, oksRemove, setBuffer...)
 	oksMove := make([]bool, minLength)
-	sparsemap.MoveIntoSparseMap(system.Locked, oksMove, ids, nodes)
-
-	setBuffer = setBuffer[:minLength]
+	sparsemap.AddIntoSparseMap(system.Locked, oksMove, setBuffer, nodes)
 
 	logging.GetThenSendInfo(
 		system.Logger,
 		"got pending jobs from pool",
 		func(event *logging.Event, level logging.Level) error {
-			ids := make([]uint64, len(setBuffer))
-			amounts := make([]int, len(setBuffer))
-			for i, job := range setBuffer {
-				ids[i] = job.Id
-				amounts[i] = len(job.Alerts)
-			}
-
-			logfmt.Unsigneds(event, "jobs.ids", ids...)
-			logfmt.Integers(event, "jobs.alerts.amounts", amounts...)
+			logfmt.Unsigneds(event, "jobs.ids", setBuffer...)
 
 			return nil
 		},
@@ -136,14 +115,11 @@ func GetFromPool(system *PoolSystem, setBuffer []*models.Job) []*models.Job {
 	return setBuffer
 }
 
-func RemoveFromPool(system *PoolSystem, jobs ...*models.Job) bool {
+func RemoveFromPool(system *PoolSystem, ids ...uint64) bool {
 	system.Mutex.Lock()
 	defer system.Mutex.Unlock()
 
-	ids := make([]uint64, len(jobs))
-	ids = models.JobsPtrToIds(jobs, ids)
-
-	nodes := make([]*poolNode, len(jobs))
+	nodes := make([]*poolNode, len(ids))
 	oksGet := make([]bool, len(ids))
 	nodes, oksGet = sparsemap.GetFromSparseMap(system.Locked, nodes, oksGet, ids...)
 
@@ -156,15 +132,7 @@ func RemoveFromPool(system *PoolSystem, jobs ...*models.Job) bool {
 		system.Logger,
 		"removed finished jobs from pool",
 		func(event *logging.Event, level logging.Level) error {
-			ids := make([]uint64, len(jobs))
-			amounts := make([]int, len(jobs))
-			for i, job := range jobs {
-				ids[i] = job.Id
-				amounts[i] = len(job.Alerts)
-			}
-
 			logfmt.Unsigneds(event, "jobs.ids", ids...)
-			logfmt.Integers(event, "jobs.alerts.amounts", amounts...)
 
 			return nil
 		},
@@ -182,7 +150,7 @@ type doublyList struct {
 type poolNode struct {
 	Next  *poolNode
 	Prev  *poolNode
-	Value *models.Job
+	Value uint64
 }
 
 func pushNodeIntoDoublyList(list *doublyList, newNode *poolNode) {
@@ -204,7 +172,7 @@ func pushNodeIntoDoublyList(list *doublyList, newNode *poolNode) {
 }
 
 func pushListIntoDoublyList(list *doublyList, listToPush *doublyList) {
-	if list == nil || listToPush == nil || listToPush.Head == nil || list.Tail == nil {
+	if list == nil || listToPush == nil || listToPush.Head == nil {
 		return
 	}
 

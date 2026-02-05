@@ -17,7 +17,7 @@ type AgentSystem struct {
 	Dispatcher *dispatchers.DispatchSystem
 
 	ArrayPool *mempools.ArrayPool[AgentId]
-	JobsPool  *mempools.ArrayPool[*models.Job]
+	JobsPool  *mempools.ArrayPool[models.Job]
 
 	Logger *logging.Logger
 }
@@ -29,7 +29,7 @@ func NewAgentSystem(
 	minChanceToCrash float32,
 	dispatcher *dispatchers.DispatchSystem,
 	arrayPool *mempools.ArrayPool[AgentId],
-	jobsPool *mempools.ArrayPool[*models.Job],
+	jobsPool *mempools.ArrayPool[models.Job],
 	logger *logging.Logger,
 ) *AgentSystem {
 	system := &AgentSystem{}
@@ -64,9 +64,10 @@ func ProcessAgentSystem(system *AgentSystem) {
 			deadServices = append(deadServices, id)
 
 			machineInfo := models.MachineInfo{Id: id}
-			job := &models.Job{Id: 0, Alerts: nil}
-			job.Id = id
-			job.Alerts = append(job.Alerts, machineInfo)
+			job := models.Job{
+				Id: id,
+				Alerts: []models.MachineInfo{machineInfo},
+			}
 
 			jobsToSave = append(jobsToSave, job)
 		} else {
@@ -80,6 +81,7 @@ func ProcessAgentSystem(system *AgentSystem) {
 		func(event *logging.Event, level logging.Level) error {
 			logfmt.Unsigneds(event, "agents.alive.ids", aliveServices...)
 			logfmt.Unsigneds(event, "agents.dead.ids", deadServices...)
+
 			return nil
 		},
 	)

@@ -33,7 +33,7 @@ func NewDispatchSystem(
 	return system
 }
 
-func SaveAlerts(system *DispatchSystem, jobs ...*models.Job) {
+func SaveAlerts(system *DispatchSystem, jobs ...models.Job) {
 	buffer.AddIntoBuffer(system.AlertsBuffer, jobs...)
 	pools.MoveIfNewIntoPool(system.AlertsPool, jobs...)
 
@@ -42,7 +42,7 @@ func SaveAlerts(system *DispatchSystem, jobs ...*models.Job) {
 		"saved jobs",
 		func(event *logging.Event, level logging.Level) error {
 			ids := make([]uint64, len(jobs))
-			ids = models.JobsPtrToIds(jobs, ids)
+			ids = models.JobsToIds(jobs, ids)
 			amounts := make([]int, len(jobs))
 			for i, job := range jobs {
 				ids[i] = job.Id
@@ -57,18 +57,17 @@ func SaveAlerts(system *DispatchSystem, jobs ...*models.Job) {
 	)
 }
 
-func GetFreeJobs(system *DispatchSystem, maxAmount uint64) []*models.Job {
-	jobs := make([]*models.Job, maxAmount)
-	jobs = pools.GetFromPool(system.AlertsPool, jobs)
+func GetFreeJobs(system *DispatchSystem, setBuffer []models.Job) []models.Job {
+	ids := make([]uint64, len(setBuffer))
+	ids = pools.GetFromPool(system.AlertsPool, ids)
+	setBuffer = buffer.GetMultipleFromBuffer(system.AlertsBuffer, setBuffer, ids...)
 
 	logging.GetThenSendInfo(
 		system.Logger,
 		"dispatched jobs",
 		func(event *logging.Event, level logging.Level) error {
-			ids := make([]uint64, len(jobs))
-			amounts := make([]int, len(jobs))
-			for i, job := range jobs {
-				ids[i] = job.Id
+			amounts := make([]int, len(setBuffer))
+			for i, job := range setBuffer {
 				amounts[i] = len(job.Alerts)
 			}
 
@@ -79,20 +78,20 @@ func GetFreeJobs(system *DispatchSystem, maxAmount uint64) []*models.Job {
 		},
 	)
 
-	return jobs
+	return setBuffer
 }
 
-func PutBusyJobs(system *DispatchSystem, jobs ...*models.Job) {
-	pools.RemoveFromPool(system.AlertsPool, jobs...)
+func PutBusyJobs(system *DispatchSystem, jobs ...models.Job) {
+	ids := make([]uint64, len(jobs))
+	ids = models.JobsToIds(jobs, ids)
+	pools.RemoveFromPool(system.AlertsPool, ids...)
 
 	logging.GetThenSendInfo(
 		system.Logger,
 		"returned jobs",
 		func(event *logging.Event, level logging.Level) error {
-			ids := make([]uint64, len(jobs))
 			amounts := make([]int, len(jobs))
 			for i, job := range jobs {
-				ids[i] = job.Id
 				amounts[i] = len(job.Alerts)
 			}
 
