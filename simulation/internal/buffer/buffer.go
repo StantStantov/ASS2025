@@ -66,8 +66,21 @@ func AddIntoBuffer(system *BufferSystem, jobs ...models.Job) {
 	logBufferAdd(system.Logger, jobs...)
 }
 
-func Length(system *BufferSystem) uint64 {
+func JobsTotal(system *BufferSystem) uint64 {
 	return uint64(len(system.Values.Dense))
+}
+
+func AlertsTotal(system *BufferSystem) uint64 {
+	total := uint64(0)
+	values := system.Values.Dense
+	for _, value := range values {
+		job := value.Value
+		alerts := job.Alerts
+
+		total += uint64(len(alerts))
+	}
+
+	return total
 }
 
 func GetMultipleFromBuffer(system *BufferSystem, setBuffer []models.Job, ids ...uint64) []models.Job {
@@ -80,16 +93,6 @@ func GetMultipleFromBuffer(system *BufferSystem, setBuffer []models.Job, ids ...
 	logBufferGet(system.Logger, setBuffer...)
 
 	return setBuffer
-}
-
-func LogAllFromBuffer(system *BufferSystem)  {
-	values := system.Values.Dense
-	jobs := make([]models.Job, len(values))
-	for i, entry := range values {
-		jobs[i] = entry.Value
-	}
-
-	logBufferGet(system.Logger, jobs...)
 }
 
 func logBufferAdd(logger *logging.Logger, jobs ...models.Job) {

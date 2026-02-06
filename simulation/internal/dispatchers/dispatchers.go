@@ -2,6 +2,7 @@ package dispatchers
 
 import (
 	"StantStantov/ASS/internal/buffer"
+	"StantStantov/ASS/internal/metrics"
 	"StantStantov/ASS/internal/models"
 	"StantStantov/ASS/internal/pools"
 
@@ -13,18 +14,23 @@ type DispatchSystem struct {
 	AlertsBuffer *buffer.BufferSystem
 	AlertsPool   *pools.PoolSystem
 
+	Metrics *metrics.MetricsSystem
+
 	Logger *logging.Logger
 }
 
 func NewDispatchSystem(
 	buffer *buffer.BufferSystem,
 	pool *pools.PoolSystem,
+	metrics *metrics.MetricsSystem,
 	logger *logging.Logger,
 ) *DispatchSystem {
 	system := &DispatchSystem{}
 
 	system.AlertsBuffer = buffer
 	system.AlertsPool = pool
+
+	system.Metrics = metrics
 
 	system.Logger = logging.NewChildLogger(logger, func(event *logging.Event) {
 		logfmt.String(event, "from", "dispatch_system")
@@ -34,6 +40,8 @@ func NewDispatchSystem(
 }
 
 func SaveAlerts(system *DispatchSystem, jobs ...models.Job) {
+	defer updateMetrics(system)
+
 	buffer.AddIntoBuffer(system.AlertsBuffer, jobs...)
 	pools.MoveIfNewIntoPool(system.AlertsPool, jobs...)
 
@@ -45,7 +53,6 @@ func SaveAlerts(system *DispatchSystem, jobs ...models.Job) {
 			ids = models.JobsToIds(jobs, ids)
 			amounts := make([]int, len(jobs))
 			for i, job := range jobs {
-				ids[i] = job.Id
 				amounts[i] = len(job.Alerts)
 			}
 
@@ -58,6 +65,8 @@ func SaveAlerts(system *DispatchSystem, jobs ...models.Job) {
 }
 
 func GetFreeJobs(system *DispatchSystem, setBuffer []models.Job) []models.Job {
+	defer updateMetrics(system)
+
 	ids := make([]uint64, len(setBuffer))
 	ids = pools.GetFromPool(system.AlertsPool, ids)
 	setBuffer = buffer.GetMultipleFromBuffer(system.AlertsBuffer, setBuffer, ids...)
@@ -82,6 +91,8 @@ func GetFreeJobs(system *DispatchSystem, setBuffer []models.Job) []models.Job {
 }
 
 func PutBusyJobs(system *DispatchSystem, jobs ...models.Job) {
+	defer updateMetrics(system)
+
 	ids := make([]uint64, len(jobs))
 	ids = models.JobsToIds(jobs, ids)
 	pools.RemoveFromPool(system.AlertsPool, ids...)
@@ -101,4 +112,17 @@ func PutBusyJobs(system *DispatchSystem, jobs ...models.Job) {
 			return nil
 		},
 	)
+}
+
+func updateMetrics(system *DispatchSystem) {
+	alertsBufferedTotal := buffer.AlertsTotal(system.AlertsBuffer)
+	jobsBufferdTotal := buffer.JobsTotal(system.AlertsBuffer)
+	jobsPendingTotal := pools.JobsPendingTotal(system.AlertsPool)
+	jobsLockedTotal := pools.JobsLockedTotal(system.AlertsPool)
+	jobsUnlockedTotal := pools.JobsUnlockedTotal(system.AlertsPool)
+	metrics.SetAlertsBufferedTotal(system.Metrics, alertsBufferedTotal)
+	metrics.SetJobsBufferedTotal(system.Metrics, jobsBufferdTotal)
+	metrics.SetJobsPendingTotal(system.Metrics, jobsPendingTotal)
+	metrics.SetJobsUnlockedTotal(system.Metrics, jobsUnlockedTotal)
+	metrics.SetJobsLockedTotal(system.Metrics, jobsLockedTotal)
 }

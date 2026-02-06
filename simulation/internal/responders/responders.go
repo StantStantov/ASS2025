@@ -2,8 +2,9 @@ package responders
 
 import (
 	"StantStantov/ASS/internal/dispatchers"
-	"StantStantov/ASS/internal/models"
 	"StantStantov/ASS/internal/mempools"
+	"StantStantov/ASS/internal/metrics"
+	"StantStantov/ASS/internal/models"
 	"iter"
 	"math/rand"
 
@@ -24,6 +25,8 @@ type RespondersSystem struct {
 
 	ArrayPool *mempools.ArrayPool[models.ResponderId]
 
+	Metrics *metrics.MetricsSystem
+
 	Logger *logging.Logger
 }
 
@@ -32,6 +35,7 @@ func NewRespondersSystem(
 	minChanceToHandle float32,
 	dispatcher *dispatchers.DispatchSystem,
 	arrayPool *mempools.ArrayPool[models.ResponderId],
+	metrics *metrics.MetricsSystem,
 	logger *logging.Logger,
 ) *RespondersSystem {
 	system := &RespondersSystem{}
@@ -52,6 +56,8 @@ func NewRespondersSystem(
 	system.Dispatcher = dispatcher
 
 	system.ArrayPool = arrayPool
+
+	system.Metrics = metrics
 
 	system.Logger = logging.NewChildLogger(logger, func(event *logging.Event) {
 		logfmt.String(event, "from", "responders_system")
@@ -92,11 +98,13 @@ func ProcessRespondersSystem(system *RespondersSystem) {
 	pushResponders(system.FreeResponders, freedResponders...)
 	pushResponders(system.BusyResponders, stillBusyResponders...)
 
+	metrics.SetRespondersFreeTotal(system.Metrics, system.FreeResponders.Length)
+	metrics.SetRespondersBusyTotal(system.Metrics, system.BusyResponders.Length)
+
 	logging.GetThenSendInfo(
 		system.Logger,
 		"polled responders for statuses",
 		func(event *logging.Event, level logging.Level) error {
-			logfmt.Unsigneds(event, "responders.all.ids", system.Responders...)
 			logfmt.Unsigneds(event, "responders.freed.ids", freedResponders...)
 			logfmt.Unsigneds(event, "responders.still_busy.ids", stillBusyResponders...)
 
