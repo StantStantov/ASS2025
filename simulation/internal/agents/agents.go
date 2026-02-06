@@ -2,8 +2,8 @@ package agents
 
 import (
 	"StantStantov/ASS/internal/dispatchers"
-	"StantStantov/ASS/internal/models"
 	"StantStantov/ASS/internal/mempools"
+	"StantStantov/ASS/internal/models"
 	"math/rand"
 
 	"github.com/StantStantov/rps/swamp/logging"
@@ -55,7 +55,10 @@ func NewAgentSystem(
 func ProcessAgentSystem(system *AgentSystem) {
 	aliveServices := mempools.GetArray(system.ArrayPool)
 	deadServices := mempools.GetArray(system.ArrayPool)
+	defer mempools.PutArrays(system.ArrayPool, aliveServices, deadServices)
 	jobsToSave := mempools.GetArray(system.JobsPool)
+	defer mempools.PutArrays(system.JobsPool, jobsToSave)
+
 	for _, id := range system.AgentsIds {
 		currentChance := rand.Float32()
 
@@ -65,7 +68,7 @@ func ProcessAgentSystem(system *AgentSystem) {
 
 			machineInfo := models.MachineInfo{Id: id}
 			job := models.Job{
-				Id: id,
+				Id:     id,
 				Alerts: []models.MachineInfo{machineInfo},
 			}
 
@@ -87,7 +90,4 @@ func ProcessAgentSystem(system *AgentSystem) {
 	)
 
 	dispatchers.SaveAlerts(system.Dispatcher, jobsToSave...)
-
-	mempools.PutArrays(system.ArrayPool, aliveServices, deadServices)
-	mempools.PutArrays(system.JobsPool, jobsToSave)
 }

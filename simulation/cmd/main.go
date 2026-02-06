@@ -22,7 +22,7 @@ func main() {
 	defer stopCtx()
 
 	agentsAmount := uint64(4)
-	respondersAmount := uint64(4)
+	respondersAmount := uint64(2)
 	chanceToCrash := 0.5
 	chanceToHandle := 0.5
 
