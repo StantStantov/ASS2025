@@ -3,6 +3,7 @@ package main
 import (
 	"StantStantov/ASS/internal/agents"
 	"StantStantov/ASS/internal/buffer"
+	"StantStantov/ASS/internal/commands"
 	"StantStantov/ASS/internal/dispatchers"
 	"StantStantov/ASS/internal/input"
 	"StantStantov/ASS/internal/mempools"
@@ -10,9 +11,8 @@ import (
 	"StantStantov/ASS/internal/models"
 	"StantStantov/ASS/internal/pools"
 	"StantStantov/ASS/internal/responders"
-	"context"
+	"StantStantov/ASS/internal/state"
 	"os"
-	"os/signal"
 	"time"
 
 	"github.com/StantStantov/rps/swamp/logging"
@@ -20,8 +20,8 @@ import (
 )
 
 func main() {
-	ctx, stopCtx := signal.NotifyContext(context.Background(), os.Kill, os.Interrupt)
-	defer stopCtx()
+	state.InitState()
+	defer state.RestoreTerminal()
 
 	agentsAmount := uint64(4)
 	respondersAmount := uint64(2)
@@ -32,7 +32,8 @@ func main() {
 	respondersIdsPool := mempools.NewArrayPool[models.ResponderId](respondersAmount)
 	jobsPool := mempools.NewArrayPool[models.Job](agentsAmount)
 
-	inputSystem := input.NewInputSystem()
+	commandsSystem := commands.NewCommandsSystem()
+	inputSystem := input.NewInputSystem(commandsSystem)
 
 	logger := logging.NewLogger(
 		os.Stdout,
@@ -75,36 +76,26 @@ func main() {
 		logger,
 	)
 
-	input.ListenToInput(inputSystem)
-	defer input.StopListening(inputSystem)
+	go input.ListenToInput(inputSystem)
 
 	msPerUpdate := 1.000
 	previous := timeToFloat64(time.Now())
 	lag := 0.0
 	for {
-		select {
-		case <-ctx.Done():
-			logging.GetThenSendDebug(
-				logger,
-				"stopped simulation",
-				logging.NilFormat,
-			)
+		current := timeToFloat64(time.Now())
+		elapsed := current - previous
+		previous = current
+		lag += elapsed
 
-			return
-		default:
-			current := timeToFloat64(time.Now())
-			elapsed := current - previous
-			previous = current
-			lag += elapsed
-
-			input.ProcessInput(inputSystem)
-			for lag >= msPerUpdate {
+		commands.ProcessCommandsSystem(commandsSystem)
+		for lag >= msPerUpdate {
+			if !state.IsPaused {
 				agents.ProcessAgentSystem(agentSystem)
 				responders.ProcessRespondersSystem(respondersSystem)
 				metrics.ProcessMetricsSystem(metricsSystem)
-
-				lag -= msPerUpdate
 			}
+
+			lag -= msPerUpdate
 		}
 	}
 }
