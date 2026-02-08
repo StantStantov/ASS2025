@@ -98,8 +98,8 @@ func ProcessRespondersSystem(system *RespondersSystem) {
 	pushResponders(system.FreeResponders, freedResponders...)
 	pushResponders(system.BusyResponders, stillBusyResponders...)
 
-	metrics.SetRespondersFreeTotal(system.Metrics, system.FreeResponders.Length)
-	metrics.SetRespondersBusyTotal(system.Metrics, system.BusyResponders.Length)
+	metrics.AddToMetric(system.Metrics, metrics.RespondersFreeCounter, system.FreeResponders.Length)
+	metrics.AddToMetric(system.Metrics, metrics.RespondersBusyCounter, system.BusyResponders.Length)
 
 	logging.GetThenSendInfo(
 		system.Logger,

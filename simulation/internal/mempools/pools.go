@@ -1,7 +1,6 @@
 package mempools
 
 import (
-	"StantStantov/ASS/internal/models"
 	"sync"
 )
 
@@ -40,43 +39,37 @@ func PutArrays[T any](pool *ArrayPool[T], arrays ...[]T) {
 	}
 }
 
-type JobPool struct {
-	Alerts            *sync.Pool
-	MinAlertsCapacity uint64
+type ValuePool[T any] struct {
+	Values *sync.Pool
 }
 
-func NewJobPool(minAlertsCapacity uint64) *JobPool {
-	jobPool := &JobPool{}
+func NewValuePool[T any](newFunc func() T) *ValuePool[T] {
+	valuePool := &ValuePool[T]{}
 
-	jobPool.Alerts = &sync.Pool{
+	valuePool.Values = &sync.Pool{
 		New: func() any {
-			return newArray[models.MachineInfo](minAlertsCapacity)
+			return newFunc()
 		},
 	}
-	jobPool.MinAlertsCapacity = minAlertsCapacity
 
-	return jobPool
+	return valuePool
 }
 
-func GetJob(pool *JobPool) models.Job {
-	got := pool.Alerts.Get()
-	alerts, ok := got.([]models.MachineInfo)
+func GetValueFromPool[T any](pool *ValuePool[T]) T {
+	got := pool.Values.Get()
+	value, ok := got.(T)
 	if !ok {
-		return models.Job{}
+		var zero T
+
+		return zero
 	}
 
-	job := models.Job{
-		Id:     0,
-		Alerts: alerts,
-	}
-
-	return job
+	return value
 }
 
-func PutJobs(pool *JobPool, jobs ...models.Job) {
+func PutValueIntoPool[T any](pool *ValuePool[T], jobs ...T) {
 	for _, job := range jobs {
-		job.Alerts = job.Alerts[:0:pool.MinAlertsCapacity]
-		pool.Alerts.Put(job.Alerts)
+		pool.Values.Put(job)
 	}
 }
 

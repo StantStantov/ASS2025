@@ -115,14 +115,10 @@ func PutBusyJobs(system *DispatchSystem, jobs ...models.Job) {
 }
 
 func updateMetrics(system *DispatchSystem) {
-	alertsBufferedTotal := buffer.AlertsTotal(system.AlertsBuffer)
-	jobsBufferdTotal := buffer.JobsTotal(system.AlertsBuffer)
 	jobsPendingTotal := pools.JobsPendingTotal(system.AlertsPool)
 	jobsLockedTotal := pools.JobsLockedTotal(system.AlertsPool)
 	jobsUnlockedTotal := pools.JobsUnlockedTotal(system.AlertsPool)
-	metrics.SetAlertsBufferedTotal(system.Metrics, alertsBufferedTotal)
-	metrics.SetJobsBufferedTotal(system.Metrics, jobsBufferdTotal)
-	metrics.SetJobsPendingTotal(system.Metrics, jobsPendingTotal)
-	metrics.SetJobsUnlockedTotal(system.Metrics, jobsUnlockedTotal)
-	metrics.SetJobsLockedTotal(system.Metrics, jobsLockedTotal)
+	metrics.AddToMetric(system.Metrics, metrics.JobsPendingCounter, jobsPendingTotal)
+	metrics.AddToMetric(system.Metrics, metrics.JobsUnlockedCounter, jobsUnlockedTotal)
+	metrics.AddToMetric(system.Metrics, metrics.JobsLockedCounter, jobsLockedTotal)
 }

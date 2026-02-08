@@ -1,31 +1,54 @@
 package metrics
 
 import (
+	"github.com/StantStantov/rps/swamp/atomic"
+
 	"github.com/StantStantov/rps/swamp/logging"
 	"github.com/StantStantov/rps/swamp/logging/logfmt"
 )
 
+type MetricType uint8
+
+const (
+	AgentsSilentCounter MetricType = iota
+	AgentsAlarmingCounter
+	JobsPendingCounter
+	JobsUnlockedCounter
+	JobsLockedCounter
+	RespondersFreeCounter
+	RespondersBusyCounter
+)
+
+var MetricTypesNames = []string{
+	"agents_silent_total",
+	"agents_alarming_total",
+	"jobs_pending_total",
+	"jobs_unlocked_total",
+	"jobs_locked_total",
+	"responders_free_total",
+	"responders_busy_total",
+}
+
 type MetricsSystem struct {
-	AgentsSilentTotalGauge   uint64
-	AgentsAlarmingTotalGauge uint64
-
-	AlertsBufferedTotalGauge uint64
-
-	JobsBufferedTotalGauge uint64
-	JobsPendingTotalGauge  uint64
-	JobsUnlockedTotalGauge uint64
-	JobsLockedTotalGauge   uint64
-
-	RespondersFreeTotalGauge uint64
-	RespondersBusyTotalGauge uint64
+	Metrics []*atomic.Uint64
 
 	Logger *logging.Logger
+}
+
+type Metric struct {
+	Name  string
+	Value uint64
 }
 
 func NewMetricsSystem(
 	logger *logging.Logger,
 ) *MetricsSystem {
 	system := &MetricsSystem{}
+
+	system.Metrics = make([]*atomic.Uint64, len(MetricTypesNames))
+	for i := range system.Metrics {
+		system.Metrics[i] = atomic.NewUint64(0)
+	}
 
 	system.Logger = logging.NewChildLogger(logger, func(event *logging.Event) {
 		logfmt.String(event, "from", "dispatch_system")
@@ -34,61 +57,40 @@ func NewMetricsSystem(
 	return system
 }
 
+func GetMetrics(system *MetricsSystem, setMetricBuffer []Metric) []Metric {
+	minLength := min(len(setMetricBuffer), len(MetricTypesNames), len(system.Metrics))
+	for i := range minLength {
+		name := MetricTypesNames[i]
+		atomicValue := system.Metrics[i]
+		value := atomic.LoadUint64(atomicValue)
+
+		metric := Metric{
+			Name:  name,
+			Value: value,
+		}
+		setMetricBuffer[i] = metric
+	}
+
+	return setMetricBuffer[:minLength]
+}
+
 func ProcessMetricsSystem(system *MetricsSystem) {
+	metrics := make([]Metric, len(MetricTypesNames))
+	metrics = GetMetrics(system, metrics)
 	logging.GetThenSendInfo(
 		system.Logger,
 		"saved new metrics values",
 		func(event *logging.Event, level logging.Level) error {
-			logfmt.Unsigned(event, "agents.silent_total", system.AgentsSilentTotalGauge)
-			logfmt.Unsigned(event, "agents.alarming_total", system.AgentsAlarmingTotalGauge)
-
-			logfmt.Unsigned(event, "alerts.buffered_total", system.AlertsBufferedTotalGauge)
-
-			logfmt.Unsigned(event, "jobs.buffered_total", system.JobsBufferedTotalGauge)
-			logfmt.Unsigned(event, "jobs.pending_total", system.JobsPendingTotalGauge)
-			logfmt.Unsigned(event, "jobs.unlocked_total", system.JobsUnlockedTotalGauge)
-			logfmt.Unsigned(event, "jobs.locked_total", system.JobsLockedTotalGauge)
-
-			logfmt.Unsigned(event, "responders.free_total", system.RespondersFreeTotalGauge)
-			logfmt.Unsigned(event, "responders.busy_total", system.RespondersBusyTotalGauge)
+			for _, metric := range metrics {
+				logfmt.Unsigned(event, "metrics."+metric.Name, metric.Value)
+			}
 
 			return nil
 		},
 	)
 }
 
-func SetAgentsSilentTotal(system *MetricsSystem, newValue uint64) {
-	system.AgentsSilentTotalGauge = newValue
-}
-
-func SetAgentsAlarmingTotal(system *MetricsSystem, newValue uint64) {
-	system.AgentsAlarmingTotalGauge = newValue
-}
-
-func SetAlertsBufferedTotal(system *MetricsSystem, newValue uint64) {
-	system.AlertsBufferedTotalGauge = newValue
-}
-
-func SetJobsBufferedTotal(system *MetricsSystem, newValue uint64) {
-	system.JobsBufferedTotalGauge = newValue
-}
-
-func SetJobsPendingTotal(system *MetricsSystem, newValue uint64) {
-	system.JobsPendingTotalGauge = newValue
-}
-
-func SetJobsUnlockedTotal(system *MetricsSystem, newValue uint64) {
-	system.JobsUnlockedTotalGauge = newValue
-}
-
-func SetJobsLockedTotal(system *MetricsSystem, newValue uint64) {
-	system.JobsLockedTotalGauge = newValue
-}
-
-func SetRespondersFreeTotal(system *MetricsSystem, newValue uint64) {
-	system.RespondersFreeTotalGauge = newValue
-}
-
-func SetRespondersBusyTotal(system *MetricsSystem, newValue uint64) {
-	system.RespondersBusyTotalGauge = newValue
+func AddToMetric(system *MetricsSystem, metric MetricType, value uint64) {
+	atomicValue := system.Metrics[metric]
+	atomic.AddUint64(atomicValue, value)
 }

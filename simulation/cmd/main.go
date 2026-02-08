@@ -72,7 +72,7 @@ func main() {
 		logger,
 	)
 
-	msPerUpdate := 1.0
+	msPerUpdate := 1.000
 	previous := timeToFloat64(time.Now())
 	lag := 0.0
 	for {

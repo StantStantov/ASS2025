@@ -83,8 +83,8 @@ func ProcessAgentSystem(system *AgentSystem) {
 		}
 	}
 
-	metrics.SetAgentsSilentTotal(system.Metrics, uint64(len(silentServices)))
-	metrics.SetAgentsAlarmingTotal(system.Metrics, uint64(len(alarmingServices)))
+	metrics.AddToMetric(system.Metrics, metrics.AgentsSilentCounter, uint64(len(silentServices)))
+	metrics.AddToMetric(system.Metrics, metrics.AgentsAlarmingCounter, uint64(len(alarmingServices)))
 
 	logging.GetThenSendInfo(
 		system.Logger,
