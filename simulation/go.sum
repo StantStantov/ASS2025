@@ -1,2 +1,6 @@
 github.com/StantStantov/rps/swamp v0.1.10 h1:cNFidu2MT/VXHXQdWA/LWxhZpHipuyrDDLtlJzfL40s=
 github.com/StantStantov/rps/swamp v0.1.10/go.mod h1:obw584BVYJDu0p8THox7CT1rr/leh/QUOTyojNb5KZw=
+golang.org/x/sys v0.40.0 h1:DBZZqJ2Rkml6QMQsZywtnjnnGvHza6BTfYFWY9kjEWQ=
+golang.org/x/sys v0.40.0/go.mod h1:OgkHotnGiDImocRcuBABYBEXf8A9a87e/uXjp9XT3ks=
+golang.org/x/term v0.39.0 h1:RclSuaJf32jOqZz74CkPA9qFuVTX7vhLlpfj/IGWlqY=
+golang.org/x/term v0.39.0/go.mod h1:yxzUCTP/U+FzoxfdKmLaA0RV1WgE0VY7hXBwKtY/4ww=

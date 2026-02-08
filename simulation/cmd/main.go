@@ -4,6 +4,7 @@ import (
 	"StantStantov/ASS/internal/agents"
 	"StantStantov/ASS/internal/buffer"
 	"StantStantov/ASS/internal/dispatchers"
+	"StantStantov/ASS/internal/input"
 	"StantStantov/ASS/internal/mempools"
 	"StantStantov/ASS/internal/metrics"
 	"StantStantov/ASS/internal/models"
@@ -30,6 +31,8 @@ func main() {
 	agentsIdsPool := mempools.NewArrayPool[agents.AgentId](agentsAmount)
 	respondersIdsPool := mempools.NewArrayPool[models.ResponderId](respondersAmount)
 	jobsPool := mempools.NewArrayPool[models.Job](agentsAmount)
+
+	inputSystem := input.NewInputSystem()
 
 	logger := logging.NewLogger(
 		os.Stdout,
@@ -72,6 +75,9 @@ func main() {
 		logger,
 	)
 
+	input.ListenToInput(inputSystem)
+	defer input.StopListening(inputSystem)
+
 	msPerUpdate := 1.000
 	previous := timeToFloat64(time.Now())
 	lag := 0.0
@@ -91,6 +97,7 @@ func main() {
 			previous = current
 			lag += elapsed
 
+			input.ProcessInput(inputSystem)
 			for lag >= msPerUpdate {
 				agents.ProcessAgentSystem(agentSystem)
 				responders.ProcessRespondersSystem(respondersSystem)
