@@ -2,9 +2,9 @@ package responders
 
 import (
 	"StantStantov/ASS/internal/common/mempools"
-	"StantStantov/ASS/internal/dispatchers"
-	"StantStantov/ASS/internal/metrics"
-	"StantStantov/ASS/internal/models"
+	"StantStantov/ASS/internal/simulation/dispatchers"
+	"StantStantov/ASS/internal/simulation/metrics"
+	"StantStantov/ASS/internal/simulation/models"
 	"iter"
 	"math/rand"
 

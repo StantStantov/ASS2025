@@ -1,10 +1,10 @@
 package dispatchers
 
 import (
-	"StantStantov/ASS/internal/buffer"
-	"StantStantov/ASS/internal/metrics"
-	"StantStantov/ASS/internal/models"
-	"StantStantov/ASS/internal/pools"
+	"StantStantov/ASS/internal/simulation/buffer"
+	"StantStantov/ASS/internal/simulation/metrics"
+	"StantStantov/ASS/internal/simulation/models"
+	"StantStantov/ASS/internal/simulation/pools"
 
 	"github.com/StantStantov/rps/swamp/logging"
 	"github.com/StantStantov/rps/swamp/logging/logfmt"

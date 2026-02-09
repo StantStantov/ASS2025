@@ -1,7 +1,7 @@
 package buffer
 
 import (
-	"StantStantov/ASS/internal/models"
+	"StantStantov/ASS/internal/simulation/models"
 	"sync"
 
 	"github.com/StantStantov/rps/swamp/collections/sparsemap"
