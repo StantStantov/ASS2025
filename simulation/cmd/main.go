@@ -2,8 +2,7 @@ package main
 
 import (
 	"StantStantov/ASS/internal/simulation"
-	"StantStantov/ASS/internal/ui/input"
-	"StantStantov/ASS/internal/ui/render"
+	"StantStantov/ASS/internal/ui"
 	"os"
 	"time"
 
@@ -35,14 +34,10 @@ func main() {
 		chanceToHandle,
 		logger,
 	)
-
-	inputSystem := input.NewInputSystem(simulation.CommandsSystem)
-	ui := &render.Ui{}
-	render.InitUi(ui, inputSystem, simulation.CommandsSystem)
+	ui.Init(simulation.CommandsSystem)
 
 	go simulation.RunEventLoop()
-
-	render.RunUi(ui)
+	ui.RunEventLoop()
 }
 
 func timeToFloat64(timestamp time.Time) float64 {
