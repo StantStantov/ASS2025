@@ -1,9 +1,9 @@
 package render
 
 import (
-	"StantStantov/ASS/internal/commands"
-	"StantStantov/ASS/internal/input"
-	"StantStantov/ASS/internal/state"
+	"StantStantov/ASS/internal/ui/commands"
+	"StantStantov/ASS/internal/ui/input"
+	"StantStantov/ASS/internal/ui/state"
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"

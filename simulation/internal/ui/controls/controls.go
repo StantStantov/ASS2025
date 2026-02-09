@@ -1,7 +1,7 @@
 package controls
 
 import (
-	"StantStantov/ASS/internal/commands"
+	"StantStantov/ASS/internal/ui/commands"
 )
 
 type KeyName string

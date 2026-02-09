@@ -1,10 +1,7 @@
 package main
 
 import (
-	"StantStantov/ASS/internal/commands"
 	"StantStantov/ASS/internal/common/mempools"
-	"StantStantov/ASS/internal/input"
-	"StantStantov/ASS/internal/render"
 	"StantStantov/ASS/internal/simulation/agents"
 	"StantStantov/ASS/internal/simulation/buffer"
 	"StantStantov/ASS/internal/simulation/dispatchers"
@@ -12,7 +9,10 @@ import (
 	"StantStantov/ASS/internal/simulation/models"
 	"StantStantov/ASS/internal/simulation/pools"
 	"StantStantov/ASS/internal/simulation/responders"
-	"StantStantov/ASS/internal/state"
+	"StantStantov/ASS/internal/ui/commands"
+	"StantStantov/ASS/internal/ui/input"
+	"StantStantov/ASS/internal/ui/render"
+	"StantStantov/ASS/internal/ui/state"
 	"os"
 	"time"
 

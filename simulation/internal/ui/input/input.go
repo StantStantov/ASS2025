@@ -1,8 +1,8 @@
 package input
 
 import (
-	"StantStantov/ASS/internal/commands"
-	"StantStantov/ASS/internal/controls"
+	"StantStantov/ASS/internal/ui/commands"
+	"StantStantov/ASS/internal/ui/controls"
 )
 
 type InputSystem struct {
