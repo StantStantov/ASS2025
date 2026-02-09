@@ -1,18 +1,9 @@
 package main
 
 import (
-	"StantStantov/ASS/internal/common/mempools"
-	"StantStantov/ASS/internal/simulation/agents"
-	"StantStantov/ASS/internal/simulation/buffer"
-	"StantStantov/ASS/internal/simulation/dispatchers"
-	"StantStantov/ASS/internal/simulation/metrics"
-	"StantStantov/ASS/internal/simulation/models"
-	"StantStantov/ASS/internal/simulation/pools"
-	"StantStantov/ASS/internal/simulation/responders"
-	"StantStantov/ASS/internal/ui/commands"
+	"StantStantov/ASS/internal/simulation"
 	"StantStantov/ASS/internal/ui/input"
 	"StantStantov/ASS/internal/ui/render"
-	"StantStantov/ASS/internal/ui/state"
 	"os"
 	"time"
 
@@ -21,91 +12,35 @@ import (
 )
 
 func main() {
-	state.InitState()
-
-	commandsSystem := commands.NewCommandsSystem()
-	inputSystem := input.NewInputSystem(commandsSystem)
-
-	ui := &render.Ui{}
-	render.InitUi(ui, inputSystem, commandsSystem)
-
 	file, err := os.Create(".logs")
 	if err != nil {
 		panic(err)
 	}
-
-	agentsAmount := uint64(4)
-	respondersAmount := uint64(2)
-	chanceToCrash := float32(0.5)
-	chanceToHandle := float32(0.5)
-
-	agentsIdsPool := mempools.NewArrayPool[agents.AgentId](agentsAmount)
-	respondersIdsPool := mempools.NewArrayPool[models.ResponderId](respondersAmount)
-	jobsPool := mempools.NewArrayPool[models.Job](agentsAmount)
-
 	logger := logging.NewLogger(
 		file,
 		logfmt.MainFormat,
 		logging.LevelDebug,
 		256,
 	)
-	metricsSystem := metrics.NewMetricsSystem(
-		logger,
-	)
-	bufferSystem := buffer.NewBufferSystem(
+
+	agentsAmount := uint64(4)
+	respondersAmount := uint64(2)
+	chanceToCrash := float32(0.5)
+	chanceToHandle := float32(0.5)
+
+	simulation.Init(
 		agentsAmount,
-		logger,
-	)
-	poolSystem := pools.NewPoolSystem(
-		agentsAmount,
-		logger,
-	)
-	dispatchSystem := dispatchers.NewDispatchSystem(
-		bufferSystem,
-		poolSystem,
-		metricsSystem,
-		logger,
-	)
-	agentSystem := agents.NewAgentSystem(
-		agentsAmount,
-		chanceToCrash,
-		dispatchSystem,
-		agentsIdsPool,
-		jobsPool,
-		metricsSystem,
-		logger,
-	)
-	respondersSystem := responders.NewRespondersSystem(
 		respondersAmount,
+		chanceToCrash,
 		chanceToHandle,
-		dispatchSystem,
-		respondersIdsPool,
-		metricsSystem,
 		logger,
 	)
 
-	go func() {
-		msPerUpdate := 1.000
-		previous := timeToFloat64(time.Now())
-		lag := 0.0
-		for {
-			current := timeToFloat64(time.Now())
-			elapsed := current - previous
-			previous = current
-			lag += elapsed
+	inputSystem := input.NewInputSystem(simulation.CommandsSystem)
+	ui := &render.Ui{}
+	render.InitUi(ui, inputSystem, simulation.CommandsSystem)
 
-			commands.ProcessCommandsSystem(commandsSystem)
-			for lag >= msPerUpdate {
-				if !state.IsPaused {
-					agents.ProcessAgentSystem(agentSystem)
-					responders.ProcessRespondersSystem(respondersSystem)
-					metrics.ProcessMetricsSystem(metricsSystem)
-				}
-
-				lag -= msPerUpdate
-			}
-		}
-	}()
+	go simulation.RunEventLoop()
 
 	render.RunUi(ui)
 }

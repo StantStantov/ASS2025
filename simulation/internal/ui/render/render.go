@@ -1,9 +1,9 @@
 package render
 
 import (
-	"StantStantov/ASS/internal/ui/commands"
+	"StantStantov/ASS/internal/simulation"
+	"StantStantov/ASS/internal/simulation/commands"
 	"StantStantov/ASS/internal/ui/input"
-	"StantStantov/ASS/internal/ui/state"
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -26,7 +26,7 @@ func InitUi(ui *Ui, inputSystem *input.InputSystem, commandsSystem *commands.Com
 		os.Exit(0)
 	})
 	commands.RegisterCommand(commandsSystem, commands.PauseCommand, func() {
-		state.IsPaused = !state.IsPaused
+		simulation.IsPaused = !simulation.IsPaused
 	})
 }
 
@@ -58,5 +58,8 @@ func (mainMenu MainMenu) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (mainMenu MainMenu) View() string {
-	return "Test"
+	if simulation.IsPaused {
+		return "Paused"
+	}
+	return "Running"
 }

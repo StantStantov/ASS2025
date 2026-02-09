@@ -1,7 +1,7 @@
 package input
 
 import (
-	"StantStantov/ASS/internal/ui/commands"
+	"StantStantov/ASS/internal/simulation/commands"
 	"StantStantov/ASS/internal/ui/controls"
 )
 
