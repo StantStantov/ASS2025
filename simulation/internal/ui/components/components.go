@@ -2,6 +2,7 @@ package components
 
 import (
 	"StantStantov/ASS/internal/simulation"
+	"StantStantov/ASS/internal/simulation/buffer"
 	"StantStantov/ASS/internal/simulation/metrics"
 	"StantStantov/ASS/internal/ui/input"
 	"fmt"
@@ -52,6 +53,21 @@ func (mainMenu MainMenu) View() string {
 	fmt.Fprintf(FrameBuffer, "Ids:             %v\n", simulation.AgentsSystem.AgentsIds)
 	fmt.Fprintf(FrameBuffer, "\n")
 
+	jobsBufferedAmount := len(simulation.Buffer.Values.Dense)
+	jobsIds := make([]uint64, jobsBufferedAmount)
+	jobsAlertsAmount := make([]int, jobsBufferedAmount)
+	for i, entry := range simulation.Buffer.Values.Dense {
+		jobsIds[i] = entry.Value.Id
+		jobsAlertsAmount[i] = len(entry.Value.Alerts)
+	}
+
+	fmt.Fprintf(FrameBuffer, "Buffer:\n")
+	fmt.Fprintf(FrameBuffer, "Ids Total:       %v\n", buffer.JobsTotal(simulation.Buffer))
+	fmt.Fprintf(FrameBuffer, "Ids:             %v\n", jobsIds)
+	fmt.Fprintf(FrameBuffer, "Alerts Total:    %v\n", buffer.AlertsTotal(simulation.Buffer))
+	fmt.Fprintf(FrameBuffer, "Alerts:          %v\n", jobsAlertsAmount)
+	fmt.Fprintf(FrameBuffer, "\n")
+
 	fmt.Fprintf(FrameBuffer, "Responders:\n")
 	fmt.Fprintf(FrameBuffer, "Ids:             %v\n", simulation.RespondersSystem.Responders)
 	fmt.Fprintf(FrameBuffer, "Free:            %v\n", simulation.RespondersSystem.FreeResponders.Dense)
@@ -64,7 +80,7 @@ func (mainMenu MainMenu) View() string {
 
 	fmt.Fprintf(FrameBuffer, "Metrics:\n")
 	for _, metric := range metricsToPrint {
-		spacesToPrint :=  lineWidth - len(metric.Name)
+		spacesToPrint := lineWidth - len(metric.Name)
 		fmt.Fprintf(FrameBuffer, "%s:%*v\n", metric.Name, spacesToPrint, metric.Value)
 	}
 	fmt.Fprintf(FrameBuffer, "\n")

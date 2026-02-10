@@ -4,6 +4,7 @@ import (
 	"StantStantov/ASS/internal/simulation/models"
 	"sync"
 
+	"github.com/StantStantov/rps/swamp/bools"
 	"github.com/StantStantov/rps/swamp/collections/sparsemap"
 	"github.com/StantStantov/rps/swamp/logging"
 	"github.com/StantStantov/rps/swamp/logging/logfmt"
@@ -42,22 +43,21 @@ func AddIntoBuffer(system *BufferSystem, jobs ...models.Job) {
 	ids = models.JobsToIds(jobs, ids)
 
 	values := make([]models.Job, len(jobs))
-	oksGet := make([]bool, len(jobs))
-	values, oksGet = sparsemap.GetFromSparseMap(system.Values, values, oksGet, ids...)
-	for i, ok := range oksGet {
+	arePresent := make([]bool, len(jobs))
+	values, arePresent = sparsemap.GetFromSparseMap(system.Values, values, arePresent, ids...)
+
+	iterNewValues := bools.IterOnlyFalse[uint64](arePresent...)
+	for i := range iterNewValues {
+		values[i] = jobs[i]
+	}
+
+	iterOldValues := bools.IterOnlyTrue[uint64](arePresent...)
+	for i := range iterOldValues {
 		newValue := jobs[i]
 		oldValue := values[i]
-		if !ok {
-			values[i] = newValue
 
-			continue
-		}
-
-		if oldValue.Id == newValue.Id {
-			oldValue.Alerts = append(oldValue.Alerts, newValue.Alerts...)
-
-			values[i] = oldValue
-		}
+		oldValue.Alerts = append(oldValue.Alerts, newValue.Alerts...)
+		values[i] = oldValue
 	}
 
 	oksMove := make([]bool, len(jobs))
