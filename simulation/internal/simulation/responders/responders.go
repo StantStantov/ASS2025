@@ -5,8 +5,12 @@ import (
 	"StantStantov/ASS/internal/simulation/dispatchers"
 	"StantStantov/ASS/internal/simulation/metrics"
 	"StantStantov/ASS/internal/simulation/models"
+	"fmt"
 	"iter"
 	"math/rand"
+
+	"github.com/StantStantov/rps/swamp/bools"
+	"github.com/StantStantov/rps/swamp/collections/sparseset"
 
 	"github.com/StantStantov/rps/swamp/logging"
 	"github.com/StantStantov/rps/swamp/logging/logfmt"
@@ -18,8 +22,8 @@ type RespondersSystem struct {
 	RespondersJob     []models.Job
 	MinChanceToHandle float32
 
-	FreeResponders *responderList
-	BusyResponders *responderList
+	FreeResponders *sparseset.SparseSet[models.ResponderId]
+	BusyResponders *sparseset.SparseSet[models.ResponderId]
 
 	Dispatcher *dispatchers.DispatchSystem
 
@@ -49,9 +53,11 @@ func NewRespondersSystem(
 	}
 	system.MinChanceToHandle = minChanceToHandle
 
-	system.FreeResponders = newResponderList()
-	system.BusyResponders = newResponderList()
-	pushResponders(system.FreeResponders, system.Responders...)
+	system.FreeResponders = sparseset.NewSparseSet(capacity)
+	system.BusyResponders = sparseset.NewSparseSet(capacity)
+
+	oksAdded := make([]bool, len(system.Responders))
+	oksAdded = sparseset.AddIntoSparseSet(system.FreeResponders, oksAdded, system.Responders...)
 
 	system.Dispatcher = dispatcher
 
@@ -67,22 +73,41 @@ func NewRespondersSystem(
 }
 
 func ProcessRespondersSystem(system *RespondersSystem) {
-	jobs := make([]models.Job, system.FreeResponders.Length)
+	freeResponders := make([]models.ResponderId, len(system.FreeResponders.Dense))
+	copy(freeResponders, system.FreeResponders.Dense)
+
+	jobs := make([]models.Job, len(freeResponders))
 	jobs = dispatchers.GetFreeJobs(system.Dispatcher, jobs)
-	for _, job := range jobs {
-		freeResponder, ok := popResponder(system.FreeResponders)
-		if !ok {
-			return
-		}
 
-		system.RespondersJob[freeResponder] = job
+	minLength := min(len(freeResponders), len(jobs))
+	freeRespondersToReceiveJobs := freeResponders[:minLength]
+	jobs = jobs[:minLength]
 
-		pushResponders(system.BusyResponders, freeResponder)
+	for i := range minLength {
+		responder := freeRespondersToReceiveJobs[i]
+		job := jobs[i]
+
+		system.RespondersJob[responder] = job
 	}
+
+	oksRemoved := make([]bool, minLength)
+	oksRemoved = sparseset.RemoveFromSparseSet(system.FreeResponders, oksRemoved, freeRespondersToReceiveJobs...)
+	if !bools.AllTrue(oksRemoved...) {
+		panic(fmt.Sprintf("Remove Busy %v %v", freeRespondersToReceiveJobs, oksRemoved))
+	}
+
+	oksAdded := make([]bool, minLength)
+	oksAdded = sparseset.AddIntoSparseSet(system.BusyResponders, oksAdded, freeRespondersToReceiveJobs...)
+	if !bools.AllTrue(oksAdded...) {
+		panic(fmt.Sprintf("Add Busy %v %v", freeRespondersToReceiveJobs, oksAdded))
+	}
+
+	busyResponders := make([]models.ResponderId, len(system.BusyResponders.Dense))
+	copy(busyResponders, system.BusyResponders.Dense)
 
 	freedResponders := mempools.GetArray(system.ArrayPool)
 	stillBusyResponders := mempools.GetArray(system.ArrayPool)
-	for id := range popAllresponders(system.BusyResponders) {
+	for _, id := range busyResponders {
 		responderJob := system.RespondersJob[id]
 
 		currentChance := rand.Float32()
@@ -95,11 +120,20 @@ func ProcessRespondersSystem(system *RespondersSystem) {
 		}
 	}
 
-	pushResponders(system.FreeResponders, freedResponders...)
-	pushResponders(system.BusyResponders, stillBusyResponders...)
+	oksRemovedFreed := make([]bool, len(freedResponders))
+	oksRemovedFreed = sparseset.RemoveFromSparseSet(system.BusyResponders, oksRemovedFreed, freedResponders...)
+	if !bools.AllTrue(oksRemovedFreed...) {
+		panic(fmt.Sprintf("Remove Freed %v %v", freedResponders, oksRemovedFreed))
+	}
 
-	metrics.AddToMetric(system.Metrics, metrics.RespondersFreeCounter, system.FreeResponders.Length)
-	metrics.AddToMetric(system.Metrics, metrics.RespondersBusyCounter, system.BusyResponders.Length)
+	oksAddedFreed := make([]bool, len(freedResponders))
+	oksAddedFreed = sparseset.AddIntoSparseSet(system.FreeResponders, oksAddedFreed, freedResponders...)
+	if !bools.AllTrue(oksAddedFreed...) {
+		panic(fmt.Sprintf("Add Freed %v %v", freedResponders, oksAddedFreed))
+	}
+
+	metrics.AddToMetric(system.Metrics, metrics.RespondersFreeCounter, uint64(len(system.FreeResponders.Dense)))
+	metrics.AddToMetric(system.Metrics, metrics.RespondersBusyCounter, uint64(len(system.BusyResponders.Dense)))
 
 	logging.GetThenSendInfo(
 		system.Logger,
@@ -191,7 +225,7 @@ func popAllresponders(list *responderList) iter.Seq[models.ResponderId] {
 	}
 }
 
-func responders(list *responderList) iter.Seq[models.ResponderId] {
+func IterResponders(list *responderList) iter.Seq[models.ResponderId] {
 	return func(yield func(models.ResponderId) bool) {
 		currentNode := list.Head
 		for currentNode != nil {

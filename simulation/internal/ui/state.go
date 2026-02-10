@@ -27,7 +27,7 @@ func Init(commandsSystem *commands.CommandsSystem) {
 	})
 
 	mainMenu := components.MainMenu{Input: Input}
-	Tea = tea.NewProgram(mainMenu)
+	Tea = tea.NewProgram(mainMenu, tea.WithAltScreen())
 }
 
 func RunEventLoop() {
