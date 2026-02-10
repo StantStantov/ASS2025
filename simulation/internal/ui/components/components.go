@@ -5,27 +5,24 @@ import (
 	"StantStantov/ASS/internal/ui/input"
 	"fmt"
 	"strings"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-var Buffer = &strings.Builder{}
+var FrameBuffer = &strings.Builder{}
 
-type TickMsg tea.Msg
+type frameMsg struct{}
+
+func nextFrame() tea.Msg {
+	return frameMsg{}
+}
 
 type MainMenu struct {
 	Input *input.InputSystem
 }
 
-func DoTick() tea.Cmd {
-	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
-		return TickMsg(t)
-	})
-}
-
 func (mainMenu MainMenu) Init() tea.Cmd {
-	return DoTick()
+	return nextFrame
 }
 
 func (mainMenu MainMenu) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -33,29 +30,27 @@ func (mainMenu MainMenu) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		keyPress := msg.String()
 		input.ProcessKeyPress(mainMenu.Input, keyPress)
-	case TickMsg:
-		return mainMenu, DoTick()
 	}
 
-	return mainMenu, nil
+	return mainMenu, nextFrame
 }
 
 func (mainMenu MainMenu) View() string {
-	defer Buffer.Reset()
+	defer FrameBuffer.Reset()
 
 	if simulation.IsPaused {
-		Buffer.WriteString("Paused\n")
+		fmt.Fprintf(FrameBuffer, "Paused\n")
 	} else {
-		Buffer.WriteString("Running\n")
+		fmt.Fprintf(FrameBuffer, "Running\n")
 	}
-	Buffer.WriteByte('\n')
+	fmt.Fprintf(FrameBuffer, "\n")
 
-	fmt.Fprintf(Buffer, "All Agents:      %v\n", simulation.AgentsSystem.AgentsIds)
-	Buffer.WriteByte('\n')
+	fmt.Fprintf(FrameBuffer, "All Agents:      %v\n", simulation.AgentsSystem.AgentsIds)
+	fmt.Fprintf(FrameBuffer, "\n")
 
-	fmt.Fprintf(Buffer, "All Responders:  %v\n", simulation.RespondersSystem.Responders)
-	fmt.Fprintf(Buffer, "Free:            %v\n", simulation.RespondersSystem.FreeResponders.Dense)
-	fmt.Fprintf(Buffer, "Busy:            %v\n", simulation.RespondersSystem.BusyResponders.Dense)
+	fmt.Fprintf(FrameBuffer, "All Responders:  %v\n", simulation.RespondersSystem.Responders)
+	fmt.Fprintf(FrameBuffer, "Free:            %v\n", simulation.RespondersSystem.FreeResponders.Dense)
+	fmt.Fprintf(FrameBuffer, "Busy:            %v\n", simulation.RespondersSystem.BusyResponders.Dense)
 
-	return Buffer.String()
+	return FrameBuffer.String()
 }
