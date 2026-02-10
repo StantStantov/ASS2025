@@ -2,6 +2,7 @@ package components
 
 import (
 	"StantStantov/ASS/internal/simulation"
+	"StantStantov/ASS/internal/simulation/metrics"
 	"StantStantov/ASS/internal/ui/input"
 	"fmt"
 	"strings"
@@ -38,6 +39,8 @@ func (mainMenu MainMenu) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (mainMenu MainMenu) View() string {
 	defer FrameBuffer.Reset()
 
+	lineWidth := 32
+
 	if simulation.IsPaused {
 		fmt.Fprintf(FrameBuffer, "Paused\n")
 	} else {
@@ -45,12 +48,26 @@ func (mainMenu MainMenu) View() string {
 	}
 	fmt.Fprintf(FrameBuffer, "\n")
 
-	fmt.Fprintf(FrameBuffer, "All Agents:      %v\n", simulation.AgentsSystem.AgentsIds)
+	fmt.Fprintf(FrameBuffer, "Agents:\n")
+	fmt.Fprintf(FrameBuffer, "Ids:             %v\n", simulation.AgentsSystem.AgentsIds)
 	fmt.Fprintf(FrameBuffer, "\n")
 
-	fmt.Fprintf(FrameBuffer, "All Responders:  %v\n", simulation.RespondersSystem.Responders)
+	fmt.Fprintf(FrameBuffer, "Responders:\n")
+	fmt.Fprintf(FrameBuffer, "Ids:             %v\n", simulation.RespondersSystem.Responders)
 	fmt.Fprintf(FrameBuffer, "Free:            %v\n", simulation.RespondersSystem.FreeResponders.Dense)
 	fmt.Fprintf(FrameBuffer, "Busy:            %v\n", simulation.RespondersSystem.BusyResponders.Dense)
+	fmt.Fprintf(FrameBuffer, "\n")
+
+	metricsAmount := len(simulation.MetricsSystem.Metrics)
+	metricsToPrint := make([]metrics.Metric, metricsAmount)
+	metricsToPrint = metrics.GetMetrics(simulation.MetricsSystem, metricsToPrint)
+
+	fmt.Fprintf(FrameBuffer, "Metrics:\n")
+	for _, metric := range metricsToPrint {
+		spacesToPrint :=  lineWidth - len(metric.Name)
+		fmt.Fprintf(FrameBuffer, "%s:%*v\n", metric.Name, spacesToPrint, metric.Value)
+	}
+	fmt.Fprintf(FrameBuffer, "\n")
 
 	return FrameBuffer.String()
 }
