@@ -7,6 +7,7 @@ import (
 	"github.com/StantStantov/rps/swamp/bools"
 	"github.com/StantStantov/rps/swamp/collections/sparsemap"
 	"github.com/StantStantov/rps/swamp/collections/sparseset"
+	"github.com/StantStantov/rps/swamp/filters"
 	"github.com/StantStantov/rps/swamp/logging"
 	"github.com/StantStantov/rps/swamp/logging/logfmt"
 )
@@ -51,28 +52,28 @@ func MoveIfNewIntoPool(system *PoolSystem, jobs ...models.Job) {
 	arePresent = sparsemap.PresentInSparseMap(system.Present, arePresent, ids...)
 
 	minLength := bools.CountFalse[uint64](arePresent...)
-	idsFiltered := make([]uint64, minLength)
-	nodesToQueue := make([]*poolNode, minLength)
-	currentAppendIndex := 0
-	iterator := bools.IterOnlyFalse[uint64](arePresent...)
-	for i := range iterator {
-		job := jobs[i]
+	jobsFiltered := make([]models.Job, minLength)
+	jobsFiltered = filters.KeepIfFalse(jobsFiltered, jobs, arePresent)
+
+	idsFiltered := make([]uint64, len(jobsFiltered))
+	nodesFiltered := make([]*poolNode, len(jobsFiltered))
+	for i, job := range jobsFiltered {
 		jobId := job.Id
-		node := &poolNode{
+		idsFiltered[i] = jobId
+		nodesFiltered[i] = &poolNode{
 			Next:  nil,
 			Prev:  nil,
 			Value: jobId,
 		}
-
-		idsFiltered[currentAppendIndex] = jobId
-		nodesToQueue[currentAppendIndex] = node
-		currentAppendIndex++
 	}
 
-	pushNodesIntoDoublyList(system.Queue, nodesToQueue...)
+	pushNodesIntoDoublyList(system.Queue, nodesFiltered...)
 
-	oksMove := make([]bool, len(nodesToQueue))
-	oksMove = sparsemap.AddIntoSparseMap(system.Present, oksMove, idsFiltered, nodesToQueue)
+	oksMove := make([]bool, len(nodesFiltered))
+	oksMove = sparsemap.AddIntoSparseMap(system.Present, oksMove, idsFiltered, nodesFiltered)
+	if !bools.AllTrue(oksMove...) {
+		panic("Move if New Into pool")
+	}
 
 	logging.GetThenSendInfo(
 		system.Logger,
@@ -101,6 +102,18 @@ func GetFromPool(system *PoolSystem, setBuffer []uint64) []uint64 {
 	system.Mutex.Lock()
 	defer system.Mutex.Unlock()
 
+	logging.GetThenSendDebug(
+		system.Logger,
+		"going to get pending jobs from pool",
+		func(event *logging.Event, level logging.Level) error {
+			logfmt.Unsigned(event, "jobs.queued_amount", system.Queue.Length)
+			logfmt.Unsigned(event, "jobs.locked_amount", sparseset.Length(system.Locked))
+			logfmt.Integer(event, "jobs.requested_amount", len(setBuffer))
+
+			return nil
+		},
+	)
+
 	queue := system.Queue
 	allIds := make([]uint64, queue.Length)
 	currentNode := queue.Head
@@ -111,24 +124,12 @@ func GetFromPool(system *PoolSystem, setBuffer []uint64) []uint64 {
 		currentNode = currentNode.Next
 	}
 
-	arePresent := make([]bool, queue.Length)
-	arePresent = sparseset.PresentInSparseSet(system.Locked, arePresent, allIds...)
+	areLocked := make([]bool, queue.Length)
+	areLocked = sparseset.PresentInSparseSet(system.Locked, areLocked, allIds...)
 
-	minLength := min(uint64(len(setBuffer)), bools.CountFalse[uint64](arePresent...))
-	currentAppendIndex := uint64(0)
-	iterator := bools.IterOnlyFalse[uint64](arePresent...)
-	for i := range iterator {
-		if currentAppendIndex == minLength {
-			break
-		}
+	setBuffer = filters.KeepIfFalse(setBuffer, allIds, areLocked)
 
-		setBuffer[currentAppendIndex] = allIds[i]
-
-		currentAppendIndex++
-	}
-	setBuffer = setBuffer[:minLength]
-
-	oksAdded := make([]bool, minLength)
+	oksAdded := make([]bool, len(setBuffer))
 	oksAdded = sparseset.AddIntoSparseSet(system.Locked, oksAdded, setBuffer...)
 
 	logging.GetThenSendInfo(
@@ -148,23 +149,16 @@ func RemoveFromPool(system *PoolSystem, ids ...uint64) {
 	system.Mutex.Lock()
 	defer system.Mutex.Unlock()
 
-	arePresent := make([]bool, len(ids))
-	arePresent = sparseset.PresentInSparseSet(system.Locked, arePresent, ids...)
-
-	minLength := bools.CountTrue[uint64](arePresent...)
-	idsToRemove := make([]uint64, minLength)
-	iterator := bools.IterOnlyTrue[uint64](arePresent...)
-	for i := range iterator {
-		idsToRemove[i] = ids[i]
-	}
-
+	minLength := len(ids)
 	nodesToRemove := make([]*poolNode, minLength)
-	oksRemoved := make([]bool, minLength)
-	nodesToRemove, oksRemoved = sparsemap.GetFromSparseMap(system.Present, nodesToRemove, oksRemoved, idsToRemove...)
+	arePresent := make([]bool, minLength)
+	nodesToRemove, arePresent = sparsemap.GetFromSparseMap(system.Present, nodesToRemove, arePresent, ids...)
 
-	oksRemoved = sparsemap.RemoveFromSparseMap(system.Present, oksRemoved, idsToRemove...)
+	oksRemovedFromPresent := make([]bool, minLength)
+	oksRemovedFromPresent = sparsemap.RemoveFromSparseMap(system.Present, oksRemovedFromPresent, ids...)
 
-	oksRemoved = sparseset.RemoveFromSparseSet(system.Locked, oksRemoved, idsToRemove...)
+	oksRemovedFromLocked := make([]bool, minLength)
+	oksRemovedFromLocked = sparseset.RemoveFromSparseSet(system.Locked, oksRemovedFromLocked, ids...)
 
 	removeNodesFromDoublyList(system.Queue, nodesToRemove...)
 
@@ -172,7 +166,9 @@ func RemoveFromPool(system *PoolSystem, ids ...uint64) {
 		system.Logger,
 		"removed finished jobs from pool",
 		func(event *logging.Event, level logging.Level) error {
-			logfmt.Unsigneds(event, "jobs.ids", ids...)
+			idsRemoved := make([]uint64, minLength)
+			idsRemoved = filters.KeepIfTrue(idsRemoved, ids, arePresent)
+			logfmt.Unsigneds(event, "jobs.ids", idsRemoved...)
 
 			return nil
 		},

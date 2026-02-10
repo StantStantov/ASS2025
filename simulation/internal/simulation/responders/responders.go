@@ -73,8 +73,8 @@ func NewRespondersSystem(
 }
 
 func ProcessRespondersSystem(system *RespondersSystem) {
-	freeResponders := make([]models.ResponderId, len(system.FreeResponders.Dense))
-	copy(freeResponders, system.FreeResponders.Dense)
+	freeResponders := make([]models.ResponderId, sparseset.Length(system.FreeResponders))
+	freeResponders = sparseset.GetAllFromSparseSet(system.FreeResponders, freeResponders)
 
 	jobs := make([]models.Job, len(freeResponders))
 	jobs = dispatchers.GetFreeJobs(system.Dispatcher, jobs)

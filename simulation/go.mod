@@ -3,7 +3,7 @@ module StantStantov/ASS
 go 1.25.5
 
 require (
-	github.com/StantStantov/rps/swamp v0.1.12
+	github.com/StantStantov/rps/swamp v0.1.14
 	github.com/charmbracelet/bubbletea v1.3.10
 )
 

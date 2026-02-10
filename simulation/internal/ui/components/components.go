@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/StantStantov/rps/swamp/collections/sparsemap"
+	"github.com/StantStantov/rps/swamp/collections/sparseset"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -53,7 +55,7 @@ func (mainMenu MainMenu) View() string {
 	fmt.Fprintf(FrameBuffer, "Ids:             %v\n", simulation.AgentsSystem.AgentsIds)
 	fmt.Fprintf(FrameBuffer, "\n")
 
-	jobsBufferedAmount := len(simulation.Buffer.Values.Dense)
+	jobsBufferedAmount := sparsemap.Length(simulation.Buffer.Values)
 	jobsIds := make([]uint64, jobsBufferedAmount)
 	jobsAlertsAmount := make([]int, jobsBufferedAmount)
 	for i, entry := range simulation.Buffer.Values.Dense {
@@ -66,6 +68,18 @@ func (mainMenu MainMenu) View() string {
 	fmt.Fprintf(FrameBuffer, "Ids:             %v\n", jobsIds)
 	fmt.Fprintf(FrameBuffer, "Alerts Total:    %v\n", buffer.AlertsTotal(simulation.Buffer))
 	fmt.Fprintf(FrameBuffer, "Alerts:          %v\n", jobsAlertsAmount)
+	fmt.Fprintf(FrameBuffer, "\n")
+
+	jobsQueuedAmount := sparsemap.Length(simulation.Pool.Present)
+	jobsQueuedIds := make([]uint64, jobsQueuedAmount)
+	jobsQueuedIds = sparsemap.GetAllKeysFromSparseMap(simulation.Pool.Present, jobsQueuedIds)
+	jobsQueuedLockedAmount := sparseset.Length(simulation.Pool.Locked)
+	jobsQueuedLockedIds := make([]uint64, jobsQueuedLockedAmount)
+	jobsQueuedLockedIds = sparseset.GetAllFromSparseSet(simulation.Pool.Locked, jobsQueuedLockedIds)
+
+	fmt.Fprintf(FrameBuffer, "Pool:\n")
+	fmt.Fprintf(FrameBuffer, "Ids:             %v\n", jobsQueuedIds)
+	fmt.Fprintf(FrameBuffer, "Locked:          %v\n", jobsQueuedLockedIds)
 	fmt.Fprintf(FrameBuffer, "\n")
 
 	fmt.Fprintf(FrameBuffer, "Responders:\n")

@@ -67,6 +67,16 @@ func SaveAlerts(system *DispatchSystem, jobs ...models.Job) {
 func GetFreeJobs(system *DispatchSystem, setBuffer []models.Job) []models.Job {
 	defer updateMetrics(system)
 
+	logging.GetThenSendDebug(
+		system.Logger,
+		"going to dispatch jobs",
+		func(event *logging.Event, level logging.Level) error {
+			logfmt.Integer(event, "jobs.requested_amount", len(setBuffer))
+
+			return nil
+		},
+	)
+
 	ids := make([]uint64, len(setBuffer))
 	ids = pools.GetFromPool(system.AlertsPool, ids)
 	setBuffer = buffer.GetMultipleFromBuffer(system.AlertsBuffer, setBuffer, ids...)
@@ -80,6 +90,7 @@ func GetFreeJobs(system *DispatchSystem, setBuffer []models.Job) []models.Job {
 				amounts[i] = len(job.Alerts)
 			}
 
+			logfmt.Integer(event, "jobs.requested_amount", len(setBuffer))
 			logfmt.Unsigneds(event, "jobs.ids", ids...)
 			logfmt.Integers(event, "jobs.alerts.amount", amounts...)
 
