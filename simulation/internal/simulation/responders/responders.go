@@ -12,7 +12,6 @@ import (
 	"github.com/StantStantov/rps/swamp/collections/sparsemap"
 	"github.com/StantStantov/rps/swamp/collections/sparseset"
 	"github.com/StantStantov/rps/swamp/filters"
-
 	"github.com/StantStantov/rps/swamp/logging"
 	"github.com/StantStantov/rps/swamp/logging/logfmt"
 )
@@ -28,7 +27,6 @@ type RespondersSystem struct {
 	Dispatcher *dispatchers.DispatchSystem
 
 	Metrics *metrics.MetricsSystem
-
 	Logger *logging.Logger
 }
 
@@ -58,7 +56,6 @@ func NewRespondersSystem(
 	system.Dispatcher = dispatcher
 
 	system.Metrics = metrics
-
 	system.Logger = logging.NewChildLogger(logger, func(event *logging.Event) {
 		logfmt.String(event, "from", "responders_system")
 	})
@@ -133,8 +130,8 @@ func ProcessRespondersSystem(system *RespondersSystem) {
 		panic(fmt.Sprintf("Add Freed %v %v", respondersFreed, oksAddedFreed))
 	}
 
-	metrics.AddToMetric(system.Metrics, metrics.RespondersBusyCounter, sparsemap.Length(system.Busy))
-	metrics.AddToMetric(system.Metrics, metrics.RespondersFreeCounter, sparseset.Length(system.Free))
+	metrics.AddToMetric(system.Metrics, metrics.RespondersFreeCounter, FreeAmount(system))
+	metrics.AddToMetric(system.Metrics, metrics.RespondersBusyCounter, BusyAmount(system))
 
 	logging.GetThenSendInfo(
 		system.Logger,

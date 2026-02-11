@@ -15,8 +15,7 @@ type DispatchSystem struct {
 	AlertsPool   *pools.PoolSystem
 
 	Metrics *metrics.MetricsSystem
-
-	Logger *logging.Logger
+	Logger  *logging.Logger
 }
 
 func NewDispatchSystem(
@@ -31,7 +30,6 @@ func NewDispatchSystem(
 	system.AlertsPool = pool
 
 	system.Metrics = metrics
-
 	system.Logger = logging.NewChildLogger(logger, func(event *logging.Event) {
 		logfmt.String(event, "from", "dispatch_system")
 	})
@@ -42,9 +40,6 @@ func NewDispatchSystem(
 func SaveAlerts(system *DispatchSystem, jobs ...models.Job) {
 	buffer.AddIntoBuffer(system.AlertsBuffer, jobs...)
 	pools.MoveIfNewIntoPool(system.AlertsPool, jobs...)
-
-	jobsPendingTotal := pools.JobsPendingTotal(system.AlertsPool)
-	metrics.AddToMetric(system.Metrics, metrics.JobsPendingCounter, jobsPendingTotal)
 
 	logging.GetThenSendInfo(
 		system.Logger,
@@ -79,11 +74,6 @@ func GetFreeJobs(system *DispatchSystem, setBuffer []models.Job) []models.Job {
 	ids := make([]uint64, len(setBuffer))
 	ids = pools.GetFromPool(system.AlertsPool, ids)
 	setBuffer = buffer.GetMultipleFromBuffer(system.AlertsBuffer, setBuffer, ids...)
-
-	jobsLockedTotal := pools.JobsLockedTotal(system.AlertsPool)
-	jobsUnlockedTotal := pools.JobsUnlockedTotal(system.AlertsPool)
-	metrics.AddToMetric(system.Metrics, metrics.JobsUnlockedCounter, jobsUnlockedTotal)
-	metrics.AddToMetric(system.Metrics, metrics.JobsLockedCounter, jobsLockedTotal)
 
 	logging.GetThenSendInfo(
 		system.Logger,

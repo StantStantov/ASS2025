@@ -1,8 +1,10 @@
 package buffer
 
 import (
+	"StantStantov/ASS/internal/simulation/metrics"
 	"StantStantov/ASS/internal/simulation/models"
 	"sync"
+	"fmt"
 
 	"github.com/StantStantov/rps/swamp/bools"
 	"github.com/StantStantov/rps/swamp/collections/sparsemap"
@@ -13,24 +15,27 @@ import (
 type BufferSystem struct {
 	Values *sparsemap.SparseMap[uint64, models.Job]
 
-	Logger *logging.Logger
-
 	Mutex *sync.Mutex
+
+	Metrics *metrics.MetricsSystem
+	Logger  *logging.Logger
 }
 
 func NewBufferSystem(
 	capacity uint64,
+	metrics *metrics.MetricsSystem,
 	logger *logging.Logger,
 ) *BufferSystem {
 	system := &BufferSystem{}
 
 	system.Values = sparsemap.NewSparseMap[uint64, models.Job](capacity)
 
+	system.Mutex = &sync.Mutex{}
+
+	system.Metrics = metrics
 	system.Logger = logging.NewChildLogger(logger, func(event *logging.Event) {
 		logfmt.String(event, "from", "buffer_system")
 	})
-
-	system.Mutex = &sync.Mutex{}
 
 	return system
 }
@@ -60,44 +65,23 @@ func AddIntoBuffer(system *BufferSystem, jobs ...models.Job) {
 		values[i] = oldValue
 	}
 
-	oksMove := make([]bool, len(jobs))
-	oksMove = sparsemap.SaveIntoSparseMap(system.Values, oksMove, ids, values)
-
-	logBufferAdd(system.Logger, jobs...)
-}
-
-func JobsTotal(system *BufferSystem) uint64 {
-	return uint64(len(system.Values.Dense))
-}
-
-func AlertsTotal(system *BufferSystem) uint64 {
-	total := uint64(0)
-	values := system.Values.Dense
-	for _, value := range values {
-		job := value.Value
-		alerts := job.Alerts
-
-		total += uint64(len(alerts))
+	movedIntoBuffer := make([]bool, len(jobs))
+	movedIntoBuffer = sparsemap.SaveIntoSparseMap(system.Values, movedIntoBuffer, ids, values)
+	if !bools.AllTrue(movedIntoBuffer...) {
+		panic(fmt.Sprintf("Save into Buffer %v %v", ids, movedIntoBuffer))
 	}
 
-	return total
-}
+	idsAdded := bools.CountTrue[uint64](arePresent...)
+	alertsAdded := uint64(0)
+	for _, job := range jobs {
+		alertsAdded += uint64(len(job.Alerts))
+	}
 
-func GetMultipleFromBuffer(system *BufferSystem, setBuffer []models.Job, ids ...uint64) []models.Job {
-	system.Mutex.Lock()
-	defer system.Mutex.Unlock()
+	metrics.AddToMetric(system.Metrics, metrics.JobsBufferedCounter, idsAdded)
+	metrics.AddToMetric(system.Metrics, metrics.AlertsBufferedCounter, alertsAdded)
 
-	oksGet := make([]bool, len(setBuffer))
-	setBuffer, oksGet = sparsemap.GetFromSparseMap(system.Values, setBuffer, oksGet, ids...)
-
-	logBufferGet(system.Logger, setBuffer...)
-
-	return setBuffer
-}
-
-func logBufferAdd(logger *logging.Logger, jobs ...models.Job) {
 	logging.GetThenSendInfo(
-		logger,
+		system.Logger,
 		"added new alerts into buffer",
 		func(event *logging.Event, level logging.Level) error {
 			ids := make([]uint64, len(jobs))
@@ -115,14 +99,20 @@ func logBufferAdd(logger *logging.Logger, jobs ...models.Job) {
 	)
 }
 
-func logBufferGet(logger *logging.Logger, jobs ...models.Job) {
+func GetMultipleFromBuffer(system *BufferSystem, setBuffer []models.Job, ids ...uint64) []models.Job {
+	system.Mutex.Lock()
+	defer system.Mutex.Unlock()
+
+	oksGet := make([]bool, len(setBuffer))
+	setBuffer, oksGet = sparsemap.GetFromSparseMap(system.Values, setBuffer, oksGet, ids...)
+
 	logging.GetThenSendInfo(
-		logger,
+		system.Logger,
 		"got alerts from buffer",
 		func(event *logging.Event, level logging.Level) error {
-			ids := make([]uint64, len(jobs))
-			amounts := make([]int, len(jobs))
-			for i, job := range jobs {
+			ids := make([]uint64, len(setBuffer))
+			amounts := make([]int, len(setBuffer))
+			for i, job := range setBuffer {
 				ids[i] = job.Id
 				amounts[i] = len(job.Alerts)
 			}
@@ -133,4 +123,6 @@ func logBufferGet(logger *logging.Logger, jobs ...models.Job) {
 			return nil
 		},
 	)
+
+	return setBuffer
 }

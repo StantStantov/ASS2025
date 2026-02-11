@@ -38,10 +38,12 @@ func Init(
 	)
 	bufferSystem := buffer.NewBufferSystem(
 		agentsAmount,
+		metricsSystem,
 		logger,
 	)
 	poolSystem := pools.NewPoolSystem(
 		agentsAmount,
+		metricsSystem,
 		logger,
 	)
 	commandsSystem := commands.NewCommandsSystem()

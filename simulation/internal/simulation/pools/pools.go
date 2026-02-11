@@ -1,7 +1,9 @@
 package pools
 
 import (
+	"StantStantov/ASS/internal/simulation/metrics"
 	"StantStantov/ASS/internal/simulation/models"
+	"fmt"
 	"sync"
 
 	"github.com/StantStantov/rps/swamp/bools"
@@ -17,13 +19,15 @@ type PoolSystem struct {
 	Present *sparsemap.SparseMap[uint64, *poolNode]
 	Locked  *sparseset.SparseSet[uint64]
 
-	Logger *logging.Logger
-
 	Mutex *sync.Mutex
+
+	Metrics *metrics.MetricsSystem
+	Logger  *logging.Logger
 }
 
 func NewPoolSystem(
 	capacity uint64,
+	metrics *metrics.MetricsSystem,
 	logger *logging.Logger,
 ) *PoolSystem {
 	system := &PoolSystem{}
@@ -34,6 +38,7 @@ func NewPoolSystem(
 
 	system.Mutex = &sync.Mutex{}
 
+	system.Metrics = metrics
 	system.Logger = logging.NewChildLogger(logger, func(event *logging.Event) {
 		logfmt.String(event, "from", "pool_system")
 	})
@@ -51,12 +56,12 @@ func MoveIfNewIntoPool(system *PoolSystem, jobs ...models.Job) {
 	arePresent := make([]bool, len(jobs))
 	arePresent = sparsemap.PresentInSparseMap(system.Present, arePresent, ids...)
 
-	minLength := bools.CountFalse[uint64](arePresent...)
-	jobsFiltered := make([]models.Job, minLength)
+	jobsNewAmount := bools.CountFalse[uint64](arePresent...)
+	jobsFiltered := make([]models.Job, jobsNewAmount)
 	jobsFiltered = filters.KeepIfFalse(jobsFiltered, jobs, arePresent)
 
-	idsFiltered := make([]uint64, len(jobsFiltered))
-	nodesFiltered := make([]*poolNode, len(jobsFiltered))
+	idsFiltered := make([]uint64, jobsNewAmount)
+	nodesFiltered := make([]*poolNode, jobsNewAmount)
 	for i, job := range jobsFiltered {
 		jobId := job.Id
 		idsFiltered[i] = jobId
@@ -69,11 +74,13 @@ func MoveIfNewIntoPool(system *PoolSystem, jobs ...models.Job) {
 
 	pushNodesIntoDoublyList(system.Queue, nodesFiltered...)
 
-	oksMove := make([]bool, len(nodesFiltered))
-	oksMove = sparsemap.AddIntoSparseMap(system.Present, oksMove, idsFiltered, nodesFiltered)
-	if !bools.AllTrue(oksMove...) {
-		panic("Move if New Into pool")
+	movedIntoPool := make([]bool, len(nodesFiltered))
+	movedIntoPool = sparsemap.AddIntoSparseMap(system.Present, movedIntoPool, idsFiltered, nodesFiltered)
+	if !bools.AllTrue(movedIntoPool...) {
+		panic(fmt.Sprintf("Add into Pool %v %v", idsFiltered, movedIntoPool))
 	}
+
+	metrics.AddToMetric(system.Metrics, metrics.JobsPendingCounter, jobsNewAmount)
 
 	logging.GetThenSendInfo(
 		system.Logger,
@@ -84,18 +91,6 @@ func MoveIfNewIntoPool(system *PoolSystem, jobs ...models.Job) {
 			return nil
 		},
 	)
-}
-
-func JobsPendingTotal(system *PoolSystem) uint64 {
-	return system.Queue.Length
-}
-
-func JobsUnlockedTotal(system *PoolSystem) uint64 {
-	return JobsPendingTotal(system) - JobsLockedTotal(system)
-}
-
-func JobsLockedTotal(system *PoolSystem) uint64 {
-	return uint64(len(system.Locked.Dense))
 }
 
 func GetFromPool(system *PoolSystem, setBuffer []uint64) []uint64 {
@@ -129,8 +124,14 @@ func GetFromPool(system *PoolSystem, setBuffer []uint64) []uint64 {
 
 	setBuffer = filters.KeepIfFalse(setBuffer, allIds, areLocked)
 
-	oksAdded := make([]bool, len(setBuffer))
-	oksAdded = sparseset.AddIntoSparseSet(system.Locked, oksAdded, setBuffer...)
+	jobsToLockAmount := uint64(len(setBuffer) )
+	lockedJobs := make([]bool, jobsToLockAmount)
+	lockedJobs = sparseset.AddIntoSparseSet(system.Locked, lockedJobs, setBuffer...)
+	if !bools.AllTrue(lockedJobs...) {
+		panic(fmt.Sprintf("Lock Pool Jobs %v %v", setBuffer, lockedJobs))
+	}
+
+	metrics.AddToMetric(system.Metrics, metrics.JobsLockedCounter, jobsToLockAmount)
 
 	logging.GetThenSendInfo(
 		system.Logger,

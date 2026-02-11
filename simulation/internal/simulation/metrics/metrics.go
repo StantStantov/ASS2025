@@ -12,9 +12,10 @@ type MetricType uint8
 const (
 	AgentsSilentCounter MetricType = iota
 	AgentsAlarmingCounter
+	JobsBufferedCounter
 	JobsPendingCounter
-	JobsUnlockedCounter
 	JobsLockedCounter
+	AlertsBufferedCounter
 	RespondersFreeCounter
 	RespondersBusyCounter
 )
@@ -22,9 +23,10 @@ const (
 var MetricTypesNames = []string{
 	"agents_silent_total",
 	"agents_alarming_total",
-	"jobs_pending_total",
-	"jobs_unlocked_total",
+	"jobs_added_to_buffer_total",
+	"jobs_added_to_pool_total",
 	"jobs_locked_total",
+	"alerts_added_to_buffer_total",
 	"responders_free_total",
 	"responders_busy_total",
 }
@@ -75,12 +77,14 @@ func GetMetrics(system *MetricsSystem, setMetricBuffer []Metric) []Metric {
 }
 
 func ProcessMetricsSystem(system *MetricsSystem) {
-	metrics := make([]Metric, len(MetricTypesNames))
-	metrics = GetMetrics(system, metrics)
+
+
 	logging.GetThenSendInfo(
 		system.Logger,
 		"saved new metrics values",
 		func(event *logging.Event, level logging.Level) error {
+			metrics := make([]Metric, len(MetricTypesNames))
+			metrics = GetMetrics(system, metrics)
 			for _, metric := range metrics {
 				logfmt.Unsigned(event, "metrics."+metric.Name, metric.Value)
 			}

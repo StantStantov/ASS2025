@@ -56,16 +56,16 @@ func (mainMenu MainMenu) View() string {
 
 	jobsBufferedAmount := sparsemap.Length(simulation.Buffer.Values)
 	jobsIds := make([]uint64, jobsBufferedAmount)
-	jobsAlertsAmounts := make([]int, jobsBufferedAmount)
-	for i, entry := range simulation.Buffer.Values.Dense {
-		jobsIds[i] = entry.Value.Id
-		jobsAlertsAmounts[i] = len(entry.Value.Alerts)
+	jobs := make([]models.Job, jobsBufferedAmount)
+	sparsemap.GetAllFromSparseMap(simulation.Buffer.Values, jobsIds, jobs)
+	jobsAlertsAmounts := make([]int, len(jobs)) 
+	for i := range jobsAlertsAmounts{
+		job := jobs[i]
+		jobsAlertsAmounts[i] = len(job.Alerts)
 	}
 
 	fmt.Fprintf(FrameBuffer, "Buffer:\n")
-	fmt.Fprintf(FrameBuffer, "Ids Total:       %v\n", len(jobsIds))
 	fmt.Fprintf(FrameBuffer, "Ids:             %v\n", jobsIds)
-	fmt.Fprintf(FrameBuffer, "Alerts Total:    %v\n", len(jobsAlertsAmounts))
 	fmt.Fprintf(FrameBuffer, "Alerts:          %v\n", jobsAlertsAmounts)
 	fmt.Fprintf(FrameBuffer, "\n")
 

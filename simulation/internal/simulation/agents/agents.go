@@ -22,8 +22,7 @@ type AgentSystem struct {
 	Dispatcher *dispatchers.DispatchSystem
 
 	Metrics *metrics.MetricsSystem
-
-	Logger *logging.Logger
+	Logger  *logging.Logger
 }
 
 type AgentId = uint64
@@ -49,7 +48,6 @@ func NewAgentSystem(
 	system.Dispatcher = dispatcher
 
 	system.Metrics = metrics
-
 	system.Logger = logging.NewChildLogger(logger, func(event *logging.Event) {
 		logfmt.String(event, "from", "agent_system")
 	})
