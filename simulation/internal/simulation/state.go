@@ -24,7 +24,8 @@ var (
 	RespondersSystem *responders.RespondersSystem = nil
 	MetricsSystem    *metrics.MetricsSystem       = nil
 
-	IsPaused bool = true
+	IsPaused    bool   = true
+	TickCounter uint64 = 0
 )
 
 func Init(
@@ -34,9 +35,7 @@ func Init(
 	chanceToHandle float32,
 	logger *logging.Logger,
 ) {
-	agentsIdsPool := mempools.NewArrayPool[agents.AgentId](agentsAmount)
 	respondersIdsPool := mempools.NewArrayPool[models.ResponderId](respondersAmount)
-	jobsPool := mempools.NewArrayPool[models.Job](agentsAmount)
 
 	metricsSystem := metrics.NewMetricsSystem(
 		logger,
@@ -60,8 +59,6 @@ func Init(
 		agentsAmount,
 		chanceToCrash,
 		dispatchSystem,
-		agentsIdsPool,
-		jobsPool,
 		metricsSystem,
 		logger,
 	)
@@ -83,6 +80,7 @@ func Init(
 	MetricsSystem = metricsSystem
 
 	IsPaused = true
+	TickCounter = 0
 }
 
 func RunEventLoop() {
@@ -101,6 +99,7 @@ func RunEventLoop() {
 				agents.ProcessAgentSystem(AgentsSystem)
 				responders.ProcessRespondersSystem(RespondersSystem)
 				metrics.ProcessMetricsSystem(MetricsSystem)
+				TickCounter++
 			}
 
 			lag -= msPerUpdate

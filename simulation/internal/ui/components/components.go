@@ -15,12 +15,6 @@ import (
 
 var FrameBuffer = &strings.Builder{}
 
-type frameMsg struct{}
-
-func nextFrame() tea.Msg {
-	return frameMsg{}
-}
-
 type MainMenu struct {
 	Input *input.InputSystem
 }
@@ -44,15 +38,19 @@ func (mainMenu MainMenu) View() string {
 
 	lineWidth := 32
 
-	if simulation.IsPaused {
-		fmt.Fprintf(FrameBuffer, "Paused\n")
-	} else {
-		fmt.Fprintf(FrameBuffer, "Running\n")
+	status := "Paused"
+	if !simulation.IsPaused {
+		status = "Running"
 	}
+
+	fmt.Fprintf(FrameBuffer, "Status:          %s\n", status)
+	fmt.Fprintf(FrameBuffer, "Tick:            %v\n", simulation.TickCounter)
 	fmt.Fprintf(FrameBuffer, "\n")
 
 	fmt.Fprintf(FrameBuffer, "Agents:\n")
 	fmt.Fprintf(FrameBuffer, "Ids:             %v\n", simulation.AgentsSystem.AgentsIds)
+	fmt.Fprintf(FrameBuffer, "Silent:          %v\n", simulation.AgentsSystem.Silent)
+	fmt.Fprintf(FrameBuffer, "Alarmed:         %v\n", simulation.AgentsSystem.Alarmed)
 	fmt.Fprintf(FrameBuffer, "\n")
 
 	jobsBufferedAmount := sparsemap.Length(simulation.Buffer.Values)
@@ -100,4 +98,10 @@ func (mainMenu MainMenu) View() string {
 	fmt.Fprintf(FrameBuffer, "\n")
 
 	return FrameBuffer.String()
+}
+
+type frameMsg struct{}
+
+func nextFrame() tea.Msg {
+	return frameMsg{}
 }

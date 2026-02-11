@@ -1,12 +1,13 @@
 package agents
 
 import (
-	"StantStantov/ASS/internal/common/mempools"
 	"StantStantov/ASS/internal/simulation/dispatchers"
 	"StantStantov/ASS/internal/simulation/metrics"
 	"StantStantov/ASS/internal/simulation/models"
 	"math/rand"
 
+	"github.com/StantStantov/rps/swamp/bools"
+	"github.com/StantStantov/rps/swamp/filters"
 	"github.com/StantStantov/rps/swamp/logging"
 	"github.com/StantStantov/rps/swamp/logging/logfmt"
 )
@@ -15,10 +16,10 @@ type AgentSystem struct {
 	AgentsIds        []AgentId
 	MinChanceToCrash float32
 
-	Dispatcher *dispatchers.DispatchSystem
+	Silent  []AgentId
+	Alarmed []AgentId
 
-	ArrayPool *mempools.ArrayPool[AgentId]
-	JobsPool  *mempools.ArrayPool[models.Job]
+	Dispatcher *dispatchers.DispatchSystem
 
 	Metrics *metrics.MetricsSystem
 
@@ -31,8 +32,6 @@ func NewAgentSystem(
 	capacity uint64,
 	minChanceToCrash float32,
 	dispatcher *dispatchers.DispatchSystem,
-	arrayPool *mempools.ArrayPool[AgentId],
-	jobsPool *mempools.ArrayPool[models.Job],
 	metrics *metrics.MetricsSystem,
 	logger *logging.Logger,
 ) *AgentSystem {
@@ -46,9 +45,6 @@ func NewAgentSystem(
 
 	system.Dispatcher = dispatcher
 
-	system.ArrayPool = arrayPool
-	system.JobsPool = jobsPool
-
 	system.Metrics = metrics
 
 	system.Logger = logging.NewChildLogger(logger, func(event *logging.Event) {
@@ -59,43 +55,47 @@ func NewAgentSystem(
 }
 
 func ProcessAgentSystem(system *AgentSystem) {
-	silentServices := mempools.GetArray(system.ArrayPool)
-	alarmingServices := mempools.GetArray(system.ArrayPool)
-	defer mempools.PutArrays(system.ArrayPool, silentServices, alarmingServices)
-	jobsToSave := mempools.GetArray(system.JobsPool)
-	defer mempools.PutArrays(system.JobsPool, jobsToSave)
-
-	for _, id := range system.AgentsIds {
+	areAlarmed := make([]bool, len(system.AgentsIds))
+	for i := range areAlarmed {
 		currentChance := rand.Float32()
 
-		crashed := currentChance >= system.MinChanceToCrash
-		if crashed {
-			machineInfo := models.MachineInfo{Id: id}
-			job := models.Job{
-				Id:     id,
-				Alerts: []models.MachineInfo{machineInfo},
-			}
-
-			jobsToSave = append(jobsToSave, job)
-			alarmingServices = append(alarmingServices, id)
-		} else {
-			silentServices = append(silentServices, id)
-		}
+		alarmed := currentChance >= system.MinChanceToCrash
+		areAlarmed[i] = alarmed
 	}
 
-	metrics.AddToMetric(system.Metrics, metrics.AgentsSilentCounter, uint64(len(silentServices)))
-	metrics.AddToMetric(system.Metrics, metrics.AgentsAlarmingCounter, uint64(len(alarmingServices)))
+	alarmedAmount, silentAmount := bools.CountBools[uint64, uint64](areAlarmed...)
+	silentAgents := make([]AgentId, silentAmount)
+	alarmedAgents := make([]AgentId, alarmedAmount)
+
+	silentAgents, alarmedAgents = filters.SeparateByBools(silentAgents, alarmedAgents, system.AgentsIds, areAlarmed)
+
+	jobs := make([]models.Job, len(alarmedAgents))
+	for i, id := range alarmedAgents {
+		machineInfo := models.MachineInfo{Id: id}
+		job := models.Job{
+			Id:     id,
+			Alerts: []models.MachineInfo{machineInfo},
+		}
+
+		jobs[i] = job
+	}
+
+	system.Silent = silentAgents
+	system.Alarmed = alarmedAgents
+
+	dispatchers.SaveAlerts(system.Dispatcher, jobs...)
+
+	metrics.AddToMetric(system.Metrics, metrics.AgentsSilentCounter, uint64(len(system.Silent)))
+	metrics.AddToMetric(system.Metrics, metrics.AgentsAlarmingCounter, uint64(len(system.Alarmed)))
 
 	logging.GetThenSendInfo(
 		system.Logger,
 		"polled agents for new statuses",
 		func(event *logging.Event, level logging.Level) error {
-			logfmt.Unsigneds(event, "agents.silent.ids", silentServices...)
-			logfmt.Unsigneds(event, "agents.alarming.ids", alarmingServices...)
+			logfmt.Unsigneds(event, "agents.silent.ids", system.Silent...)
+			logfmt.Unsigneds(event, "agents.alarming.ids", system.Alarmed...)
 
 			return nil
 		},
 	)
-
-	dispatchers.SaveAlerts(system.Dispatcher, jobsToSave...)
 }
