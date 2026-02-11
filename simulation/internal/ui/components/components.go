@@ -2,8 +2,8 @@ package components
 
 import (
 	"StantStantov/ASS/internal/simulation"
-	"StantStantov/ASS/internal/simulation/buffer"
 	"StantStantov/ASS/internal/simulation/metrics"
+	"StantStantov/ASS/internal/simulation/models"
 	"StantStantov/ASS/internal/ui/input"
 	"fmt"
 	"strings"
@@ -43,6 +43,7 @@ func (mainMenu MainMenu) View() string {
 		status = "Running"
 	}
 
+	fmt.Fprintf(FrameBuffer, "Simulation:\n")
 	fmt.Fprintf(FrameBuffer, "Status:          %s\n", status)
 	fmt.Fprintf(FrameBuffer, "Tick:            %v\n", simulation.TickCounter)
 	fmt.Fprintf(FrameBuffer, "\n")
@@ -55,17 +56,17 @@ func (mainMenu MainMenu) View() string {
 
 	jobsBufferedAmount := sparsemap.Length(simulation.Buffer.Values)
 	jobsIds := make([]uint64, jobsBufferedAmount)
-	jobsAlertsAmount := make([]int, jobsBufferedAmount)
+	jobsAlertsAmounts := make([]int, jobsBufferedAmount)
 	for i, entry := range simulation.Buffer.Values.Dense {
 		jobsIds[i] = entry.Value.Id
-		jobsAlertsAmount[i] = len(entry.Value.Alerts)
+		jobsAlertsAmounts[i] = len(entry.Value.Alerts)
 	}
 
 	fmt.Fprintf(FrameBuffer, "Buffer:\n")
-	fmt.Fprintf(FrameBuffer, "Ids Total:       %v\n", buffer.JobsTotal(simulation.Buffer))
+	fmt.Fprintf(FrameBuffer, "Ids Total:       %v\n", len(jobsIds))
 	fmt.Fprintf(FrameBuffer, "Ids:             %v\n", jobsIds)
-	fmt.Fprintf(FrameBuffer, "Alerts Total:    %v\n", buffer.AlertsTotal(simulation.Buffer))
-	fmt.Fprintf(FrameBuffer, "Alerts:          %v\n", jobsAlertsAmount)
+	fmt.Fprintf(FrameBuffer, "Alerts Total:    %v\n", len(jobsAlertsAmounts))
+	fmt.Fprintf(FrameBuffer, "Alerts:          %v\n", jobsAlertsAmounts)
 	fmt.Fprintf(FrameBuffer, "\n")
 
 	jobsQueuedAmount := sparsemap.Length(simulation.Pool.Present)
@@ -80,10 +81,17 @@ func (mainMenu MainMenu) View() string {
 	fmt.Fprintf(FrameBuffer, "Locked:          %v\n", jobsQueuedLockedIds)
 	fmt.Fprintf(FrameBuffer, "\n")
 
+	respondersFreeAmount := sparseset.Length(simulation.RespondersSystem.Free)
+	respondersFree := make([]models.ResponderId, respondersFreeAmount)
+	respondersFree = sparseset.GetAllFromSparseSet(simulation.RespondersSystem.Free, respondersFree)
+	respondersBusyAmount := sparsemap.Length(simulation.RespondersSystem.Busy)
+	respondersBusy := make([]models.ResponderId, respondersBusyAmount)
+	respondersBusy = sparsemap.GetAllKeysFromSparseMap(simulation.RespondersSystem.Busy, respondersBusy)
+
 	fmt.Fprintf(FrameBuffer, "Responders:\n")
 	fmt.Fprintf(FrameBuffer, "Ids:             %v\n", simulation.RespondersSystem.Responders)
-	fmt.Fprintf(FrameBuffer, "Free:            %v\n", simulation.RespondersSystem.FreeResponders.Dense)
-	fmt.Fprintf(FrameBuffer, "Busy:            %v\n", simulation.RespondersSystem.BusyResponders.Dense)
+	fmt.Fprintf(FrameBuffer, "Free:            %v\n", respondersFree)
+	fmt.Fprintf(FrameBuffer, "Busy:            %v\n", respondersBusy)
 	fmt.Fprintf(FrameBuffer, "\n")
 
 	metricsAmount := len(simulation.MetricsSystem.Metrics)

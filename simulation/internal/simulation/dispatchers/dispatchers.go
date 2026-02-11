@@ -40,10 +40,11 @@ func NewDispatchSystem(
 }
 
 func SaveAlerts(system *DispatchSystem, jobs ...models.Job) {
-	defer updateMetrics(system)
-
 	buffer.AddIntoBuffer(system.AlertsBuffer, jobs...)
 	pools.MoveIfNewIntoPool(system.AlertsPool, jobs...)
+
+	jobsPendingTotal := pools.JobsPendingTotal(system.AlertsPool)
+	metrics.AddToMetric(system.Metrics, metrics.JobsPendingCounter, jobsPendingTotal)
 
 	logging.GetThenSendInfo(
 		system.Logger,
@@ -65,8 +66,6 @@ func SaveAlerts(system *DispatchSystem, jobs ...models.Job) {
 }
 
 func GetFreeJobs(system *DispatchSystem, setBuffer []models.Job) []models.Job {
-	defer updateMetrics(system)
-
 	logging.GetThenSendDebug(
 		system.Logger,
 		"going to dispatch jobs",
@@ -80,6 +79,11 @@ func GetFreeJobs(system *DispatchSystem, setBuffer []models.Job) []models.Job {
 	ids := make([]uint64, len(setBuffer))
 	ids = pools.GetFromPool(system.AlertsPool, ids)
 	setBuffer = buffer.GetMultipleFromBuffer(system.AlertsBuffer, setBuffer, ids...)
+
+	jobsLockedTotal := pools.JobsLockedTotal(system.AlertsPool)
+	jobsUnlockedTotal := pools.JobsUnlockedTotal(system.AlertsPool)
+	metrics.AddToMetric(system.Metrics, metrics.JobsUnlockedCounter, jobsUnlockedTotal)
+	metrics.AddToMetric(system.Metrics, metrics.JobsLockedCounter, jobsLockedTotal)
 
 	logging.GetThenSendInfo(
 		system.Logger,
@@ -102,8 +106,6 @@ func GetFreeJobs(system *DispatchSystem, setBuffer []models.Job) []models.Job {
 }
 
 func PutBusyJobs(system *DispatchSystem, jobs ...models.Job) {
-	defer updateMetrics(system)
-
 	ids := make([]uint64, len(jobs))
 	ids = models.JobsToIds(jobs, ids)
 	pools.RemoveFromPool(system.AlertsPool, ids...)
@@ -123,13 +125,4 @@ func PutBusyJobs(system *DispatchSystem, jobs ...models.Job) {
 			return nil
 		},
 	)
-}
-
-func updateMetrics(system *DispatchSystem) {
-	jobsPendingTotal := pools.JobsPendingTotal(system.AlertsPool)
-	jobsLockedTotal := pools.JobsLockedTotal(system.AlertsPool)
-	jobsUnlockedTotal := pools.JobsUnlockedTotal(system.AlertsPool)
-	metrics.AddToMetric(system.Metrics, metrics.JobsPendingCounter, jobsPendingTotal)
-	metrics.AddToMetric(system.Metrics, metrics.JobsUnlockedCounter, jobsUnlockedTotal)
-	metrics.AddToMetric(system.Metrics, metrics.JobsLockedCounter, jobsLockedTotal)
 }

@@ -43,6 +43,9 @@ func NewAgentSystem(
 	}
 	system.MinChanceToCrash = minChanceToCrash
 
+	system.Silent = []AgentId{}
+	system.Alarmed = []AgentId{}
+
 	system.Dispatcher = dispatcher
 
 	system.Metrics = metrics
@@ -58,7 +61,6 @@ func ProcessAgentSystem(system *AgentSystem) {
 	areAlarmed := make([]bool, len(system.AgentsIds))
 	for i := range areAlarmed {
 		currentChance := rand.Float32()
-
 		alarmed := currentChance >= system.MinChanceToCrash
 		areAlarmed[i] = alarmed
 	}

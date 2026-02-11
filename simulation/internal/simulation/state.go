@@ -1,13 +1,11 @@
 package simulation
 
 import (
-	"StantStantov/ASS/internal/common/mempools"
 	"StantStantov/ASS/internal/simulation/agents"
 	"StantStantov/ASS/internal/simulation/buffer"
 	"StantStantov/ASS/internal/simulation/commands"
 	"StantStantov/ASS/internal/simulation/dispatchers"
 	"StantStantov/ASS/internal/simulation/metrics"
-	"StantStantov/ASS/internal/simulation/models"
 	"StantStantov/ASS/internal/simulation/pools"
 	"StantStantov/ASS/internal/simulation/responders"
 	"time"
@@ -35,8 +33,6 @@ func Init(
 	chanceToHandle float32,
 	logger *logging.Logger,
 ) {
-	respondersIdsPool := mempools.NewArrayPool[models.ResponderId](respondersAmount)
-
 	metricsSystem := metrics.NewMetricsSystem(
 		logger,
 	)
@@ -66,7 +62,6 @@ func Init(
 		respondersAmount,
 		chanceToHandle,
 		dispatchSystem,
-		respondersIdsPool,
 		metricsSystem,
 		logger,
 	)
