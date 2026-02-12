@@ -27,7 +27,7 @@ type RespondersSystem struct {
 	Dispatcher *dispatchers.DispatchSystem
 
 	Metrics *metrics.MetricsSystem
-	Logger *logging.Logger
+	Logger  *logging.Logger
 }
 
 func NewRespondersSystem(
@@ -75,7 +75,7 @@ func ProcessRespondersSystem(system *RespondersSystem) {
 	respondersToBusy := respondersFree[:minLength]
 
 	removedFromFree := make([]bool, minLength)
-	sparseset.RemoveFromSparseSet(system.Free, removedFromFree, respondersToBusy...)
+	removedFromFree = sparseset.RemoveFromSparseSet(system.Free, removedFromFree, respondersToBusy...)
 	if !bools.AllTrue(removedFromFree...) {
 		panic(fmt.Sprintf("Remove from Free %v %v", respondersToBusy, removedFromFree))
 	}
@@ -90,13 +90,20 @@ func ProcessRespondersSystem(system *RespondersSystem) {
 		system.Logger,
 		"gave free responders new jobs",
 		func(event *logging.Event, level logging.Level) error {
+			jobsIds := make([]uint64, len(jobsToBusy))
+			jobsIds = models.JobsToIds(jobsToBusy, jobsIds)
+
 			logfmt.Unsigneds(event, "responders.ids", respondersToBusy...)
+			logfmt.Unsigneds(event, "jobs.ids", jobsIds...)
 
 			return nil
 		},
 	)
 
 	amountBusy := sparsemap.Length(system.Busy)
+	idsBusy := make([]models.ResponderId, amountBusy)
+	idsBusy = sparsemap.GetAllKeysFromSparseMap(system.Busy, idsBusy)
+
 	areFreed := make([]bool, amountBusy)
 	for i := range amountBusy {
 		currentChance := rand.Float32()
@@ -107,24 +114,24 @@ func ProcessRespondersSystem(system *RespondersSystem) {
 	amountFreed, amountStillBusy := bools.CountBools[models.ResponderId, models.ResponderId](areFreed...)
 	respondersStillBusy := make([]models.ResponderId, amountStillBusy)
 	respondersFreed := make([]models.ResponderId, amountFreed)
-	respondersStillBusy, respondersFreed = filters.SeparateByBools(respondersStillBusy, respondersFreed, system.Responders, areFreed)
+	respondersStillBusy, respondersFreed = filters.SeparateByBools(respondersStillBusy, respondersFreed, idsBusy, areFreed)
 
-	jobsToFree := make([]models.Job, amountFreed)
-	gotJobsToFree := make([]bool, amountFreed)
+	jobsToFree := make([]models.Job, len(respondersFreed))
+	gotJobsToFree := make([]bool, len(respondersFreed))
 	jobsToFree, gotJobsToFree = sparsemap.GetFromSparseMap(system.Busy, jobsToFree, gotJobsToFree, respondersFreed...)
 	if !bools.AllTrue(gotJobsToFree...) {
-		panic(fmt.Sprintf("Get Jobs to Free %v %v", respondersFreed, gotJobsToFree))
+		panic(fmt.Sprintf("Get Jobs to Free %v %v %v", system.Busy.Dense, respondersFreed, gotJobsToFree))
 	}
 
 	dispatchers.PutBusyJobs(system.Dispatcher, jobsToFree...)
 
-	oksRemovedFreed := make([]bool, amountFreed)
+	oksRemovedFreed := make([]bool, len(respondersFreed))
 	oksRemovedFreed = sparsemap.RemoveFromSparseMap(system.Busy, oksRemovedFreed, respondersFreed...)
 	if !bools.AllTrue(oksRemovedFreed...) {
 		panic(fmt.Sprintf("Remove Freed %v %v", respondersFreed, oksRemovedFreed))
 	}
 
-	oksAddedFreed := make([]bool, amountFreed)
+	oksAddedFreed := make([]bool, len(respondersFreed))
 	oksAddedFreed = sparseset.AddIntoSparseSet(system.Free, oksAddedFreed, respondersFreed...)
 	if !bools.AllTrue(oksAddedFreed...) {
 		panic(fmt.Sprintf("Add Freed %v %v", respondersFreed, oksAddedFreed))

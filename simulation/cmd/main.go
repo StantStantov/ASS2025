@@ -3,7 +3,9 @@ package main
 import (
 	"StantStantov/ASS/internal/simulation"
 	"StantStantov/ASS/internal/ui"
+	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/StantStantov/rps/swamp/logging"
@@ -15,8 +17,12 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	logsBuffer := &strings.Builder{}
+
+	multiWriter := io.MultiWriter(file, logsBuffer)
 	logger := logging.NewLogger(
-		file,
+		multiWriter,
 		logfmt.MainFormat,
 		logging.LevelDebug,
 		256,
@@ -34,7 +40,7 @@ func main() {
 		chanceToHandle,
 		logger,
 	)
-	ui.Init(simulation.CommandsSystem)
+	ui.Init(simulation.CommandsSystem, logsBuffer)
 
 	go simulation.RunEventLoop()
 	ui.RunEventLoop()

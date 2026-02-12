@@ -76,24 +76,6 @@ func GetMetrics(system *MetricsSystem, setMetricBuffer []Metric) []Metric {
 	return setMetricBuffer[:minLength]
 }
 
-func ProcessMetricsSystem(system *MetricsSystem) {
-
-
-	logging.GetThenSendInfo(
-		system.Logger,
-		"saved new metrics values",
-		func(event *logging.Event, level logging.Level) error {
-			metrics := make([]Metric, len(MetricTypesNames))
-			metrics = GetMetrics(system, metrics)
-			for _, metric := range metrics {
-				logfmt.Unsigned(event, "metrics."+metric.Name, metric.Value)
-			}
-
-			return nil
-		},
-	)
-}
-
 func AddToMetric(system *MetricsSystem, metric MetricType, value uint64) {
 	atomicValue := system.Metrics[metric]
 	atomic.AddUint64(atomicValue, value)

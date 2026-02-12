@@ -33,6 +33,7 @@ func Init(
 	chanceToHandle float32,
 	logger *logging.Logger,
 ) {
+	commandsSystem := commands.NewCommandsSystem()
 	metricsSystem := metrics.NewMetricsSystem(
 		logger,
 	)
@@ -46,7 +47,6 @@ func Init(
 		metricsSystem,
 		logger,
 	)
-	commandsSystem := commands.NewCommandsSystem()
 	dispatchSystem := dispatchers.NewDispatchSystem(
 		bufferSystem,
 		poolSystem,
@@ -95,7 +95,6 @@ func RunEventLoop() {
 			if !IsPaused {
 				agents.ProcessAgentSystem(AgentsSystem)
 				responders.ProcessRespondersSystem(RespondersSystem)
-				metrics.ProcessMetricsSystem(MetricsSystem)
 				TickCounter++
 			}
 

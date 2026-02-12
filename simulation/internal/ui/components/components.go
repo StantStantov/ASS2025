@@ -10,13 +10,18 @@ import (
 
 	"github.com/StantStantov/rps/swamp/collections/sparsemap"
 	"github.com/StantStantov/rps/swamp/collections/sparseset"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
-var FrameBuffer = &strings.Builder{}
+var style = lipgloss.NewStyle().BorderStyle(lipgloss.NormalBorder())
 
 type MainMenu struct {
 	Input *input.InputSystem
+
+	Info InfoWindow
+	Logs LogsWindow
 }
 
 func (mainMenu MainMenu) Init() tea.Cmd {
@@ -28,46 +33,103 @@ func (mainMenu MainMenu) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		keyPress := msg.String()
 		input.ProcessKeyPress(mainMenu.Input, keyPress)
+	case tea.WindowSizeMsg:
+		borderWidth := style.GetHorizontalBorderSize()
+		borderHeight := style.GetVerticalBorderSize()
+		windowWidth := msg.Width - 2*borderWidth
+		windowHeight := msg.Height - borderHeight
+
+		infoTablesWidth := int(float32(windowWidth) * 0.2)
+		infoTablesHeight := windowHeight
+		mainMenu.Info = InfoWindow{Buffer: mainMenu.Info.Buffer, Model: viewport.New(infoTablesWidth, infoTablesHeight)}
+
+		logsWidth := windowWidth - infoTablesWidth
+		logsHeight := windowHeight
+		mainMenu.Logs = LogsWindow{Buffer: mainMenu.Logs.Buffer, Model: viewport.New(logsWidth, logsHeight)}
 	}
 
 	return mainMenu, nextFrame
 }
 
 func (mainMenu MainMenu) View() string {
-	defer FrameBuffer.Reset()
+	infoWindow := mainMenu.Info.View()
+	infoWindowStyled := style.Render(infoWindow)
 
-	lineWidth := 32
+	viewport := mainMenu.Logs.View()
+	viewportStyled := style.Render(viewport)
+
+	return lipgloss.JoinHorizontal(lipgloss.Left, infoWindowStyled, viewportStyled)
+}
+
+type LogsWindow struct {
+	Buffer *strings.Builder
+	viewport.Model
+}
+
+func (lw LogsWindow) Init() tea.Cmd {
+	return nil
+}
+
+func (lw LogsWindow) Update(tea.Msg) (tea.Model, tea.Cmd) {
+	return lw, nil
+}
+
+func (lw LogsWindow) View() string {
+	logsToRender := lw.Buffer.String()
+	logsToRenderWrapped := lipgloss.NewStyle().Width(lw.Model.Width).Render(logsToRender)
+
+	lw.Model.SetContent(logsToRenderWrapped)
+	viewport := lw.Model.View()
+
+	return viewport
+}
+
+type InfoWindow struct {
+	Buffer *strings.Builder
+	viewport.Model
+}
+
+func (iw InfoWindow) Init() tea.Cmd {
+	return nil
+}
+
+func (iw InfoWindow) Update(tea.Msg) (tea.Model, tea.Cmd) {
+	return iw, nil
+}
+
+func (iw InfoWindow) View() string {
+	defer iw.Buffer.Reset()
 
 	status := "Paused"
 	if !simulation.IsPaused {
 		status = "Running"
 	}
 
-	fmt.Fprintf(FrameBuffer, "Simulation:\n")
-	fmt.Fprintf(FrameBuffer, "Status:          %s\n", status)
-	fmt.Fprintf(FrameBuffer, "Tick:            %v\n", simulation.TickCounter)
-	fmt.Fprintf(FrameBuffer, "\n")
+	fmt.Fprintf(iw.Buffer, "Simulation:\n")
+	fmt.Fprintf(iw.Buffer, "Status:          %s\n", status)
+	fmt.Fprintf(iw.Buffer, "Tick:            %v\n", simulation.TickCounter)
+	fmt.Fprintf(iw.Buffer, "\n")
 
-	fmt.Fprintf(FrameBuffer, "Agents:\n")
-	fmt.Fprintf(FrameBuffer, "Ids:             %v\n", simulation.AgentsSystem.AgentsIds)
-	fmt.Fprintf(FrameBuffer, "Silent:          %v\n", simulation.AgentsSystem.Silent)
-	fmt.Fprintf(FrameBuffer, "Alarmed:         %v\n", simulation.AgentsSystem.Alarmed)
-	fmt.Fprintf(FrameBuffer, "\n")
+	fmt.Fprintf(iw.Buffer, "Agents:\n")
+	fmt.Fprintf(iw.Buffer, "Ids:             %v\n", simulation.AgentsSystem.AgentsIds)
+	fmt.Fprintf(iw.Buffer, "Silent:          %v\n", simulation.AgentsSystem.Silent)
+	fmt.Fprintf(iw.Buffer, "Alarmed:         %v\n", simulation.AgentsSystem.Alarmed)
+	fmt.Fprintf(iw.Buffer, "\n")
 
 	jobsBufferedAmount := sparsemap.Length(simulation.Buffer.Values)
 	jobsIds := make([]uint64, jobsBufferedAmount)
 	jobs := make([]models.Job, jobsBufferedAmount)
 	sparsemap.GetAllFromSparseMap(simulation.Buffer.Values, jobsIds, jobs)
-	jobsAlertsAmounts := make([]int, len(jobs)) 
-	for i := range jobsAlertsAmounts{
+	jobsAlertsAmounts := make([]int, len(jobs))
+	for i := range jobsAlertsAmounts {
 		job := jobs[i]
 		jobsAlertsAmounts[i] = len(job.Alerts)
 	}
 
-	fmt.Fprintf(FrameBuffer, "Buffer:\n")
-	fmt.Fprintf(FrameBuffer, "Ids:             %v\n", jobsIds)
-	fmt.Fprintf(FrameBuffer, "Alerts:          %v\n", jobsAlertsAmounts)
-	fmt.Fprintf(FrameBuffer, "\n")
+	fmt.Fprintf(iw.Buffer, "Buffer:\n")
+	fmt.Fprintf(iw.Buffer, "Ids:             %v\n", jobsIds)
+	fmt.Fprintf(iw.Buffer, "Alerts:          %v\n", jobsAlertsAmounts)
+	fmt.Fprintf(iw.Buffer, "\n")
 
 	jobsQueuedAmount := sparsemap.Length(simulation.Pool.Present)
 	jobsQueuedIds := make([]uint64, jobsQueuedAmount)
@@ -76,10 +138,10 @@ func (mainMenu MainMenu) View() string {
 	jobsQueuedLockedIds := make([]uint64, jobsQueuedLockedAmount)
 	jobsQueuedLockedIds = sparseset.GetAllFromSparseSet(simulation.Pool.Locked, jobsQueuedLockedIds)
 
-	fmt.Fprintf(FrameBuffer, "Pool:\n")
-	fmt.Fprintf(FrameBuffer, "Ids:             %v\n", jobsQueuedIds)
-	fmt.Fprintf(FrameBuffer, "Locked:          %v\n", jobsQueuedLockedIds)
-	fmt.Fprintf(FrameBuffer, "\n")
+	fmt.Fprintf(iw.Buffer, "Pool:\n")
+	fmt.Fprintf(iw.Buffer, "Ids:             %v\n", jobsQueuedIds)
+	fmt.Fprintf(iw.Buffer, "Locked:          %v\n", jobsQueuedLockedIds)
+	fmt.Fprintf(iw.Buffer, "\n")
 
 	respondersFreeAmount := sparseset.Length(simulation.RespondersSystem.Free)
 	respondersFree := make([]models.ResponderId, respondersFreeAmount)
@@ -88,24 +150,29 @@ func (mainMenu MainMenu) View() string {
 	respondersBusy := make([]models.ResponderId, respondersBusyAmount)
 	respondersBusy = sparsemap.GetAllKeysFromSparseMap(simulation.RespondersSystem.Busy, respondersBusy)
 
-	fmt.Fprintf(FrameBuffer, "Responders:\n")
-	fmt.Fprintf(FrameBuffer, "Ids:             %v\n", simulation.RespondersSystem.Responders)
-	fmt.Fprintf(FrameBuffer, "Free:            %v\n", respondersFree)
-	fmt.Fprintf(FrameBuffer, "Busy:            %v\n", respondersBusy)
-	fmt.Fprintf(FrameBuffer, "\n")
+	fmt.Fprintf(iw.Buffer, "Responders:\n")
+	fmt.Fprintf(iw.Buffer, "Ids:             %v\n", simulation.RespondersSystem.Responders)
+	fmt.Fprintf(iw.Buffer, "Free:            %v\n", respondersFree)
+	fmt.Fprintf(iw.Buffer, "Busy:            %v\n", respondersBusy)
+	fmt.Fprintf(iw.Buffer, "\n")
 
+	lineWidth := 32
 	metricsAmount := len(simulation.MetricsSystem.Metrics)
 	metricsToPrint := make([]metrics.Metric, metricsAmount)
 	metricsToPrint = metrics.GetMetrics(simulation.MetricsSystem, metricsToPrint)
 
-	fmt.Fprintf(FrameBuffer, "Metrics:\n")
+	fmt.Fprintf(iw.Buffer, "Metrics:\n")
 	for _, metric := range metricsToPrint {
 		spacesToPrint := lineWidth - len(metric.Name)
-		fmt.Fprintf(FrameBuffer, "%s:%*v\n", metric.Name, spacesToPrint, metric.Value)
+		fmt.Fprintf(iw.Buffer, "%s:%*v\n", metric.Name, spacesToPrint, metric.Value)
 	}
-	fmt.Fprintf(FrameBuffer, "\n")
+	fmt.Fprintf(iw.Buffer, "\n")
 
-	return FrameBuffer.String()
+	frame := iw.Buffer.String()
+
+	iw.Model.SetContent(frame)
+
+	return iw.Model.View()
 }
 
 type frameMsg struct{}
