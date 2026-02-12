@@ -2,27 +2,19 @@ package main
 
 import (
 	"StantStantov/ASS/internal/simulation"
+	"StantStantov/ASS/internal/simulation/framebuffer"
 	"StantStantov/ASS/internal/ui"
-	"io"
-	"os"
-	"strings"
-	"time"
 
 	"github.com/StantStantov/rps/swamp/logging"
 	"github.com/StantStantov/rps/swamp/logging/logfmt"
 )
 
 func main() {
-	file, err := os.Create(".logs")
-	if err != nil {
-		panic(err)
-	}
+	logBuffer := &framebuffer.Buffer{}
+	framebuffer.InitBuffer(logBuffer)
 
-	logsBuffer := &strings.Builder{}
-
-	multiWriter := io.MultiWriter(file, logsBuffer)
 	logger := logging.NewLogger(
-		multiWriter,
+		logBuffer,
 		logfmt.MainFormat,
 		logging.LevelDebug,
 		256,
@@ -38,14 +30,11 @@ func main() {
 		respondersAmount,
 		chanceToCrash,
 		chanceToHandle,
+		logBuffer,
 		logger,
 	)
-	ui.Init(simulation.CommandsSystem, logsBuffer)
+	ui.Init(simulation.CommandsSystem, logBuffer)
 
 	go simulation.RunEventLoop()
 	ui.RunEventLoop()
-}
-
-func timeToFloat64(timestamp time.Time) float64 {
-	return float64(timestamp.UnixNano() / 1e9)
 }

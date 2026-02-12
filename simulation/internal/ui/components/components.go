@@ -2,6 +2,7 @@ package components
 
 import (
 	"StantStantov/ASS/internal/simulation"
+	"StantStantov/ASS/internal/simulation/framebuffer"
 	"StantStantov/ASS/internal/simulation/metrics"
 	"StantStantov/ASS/internal/simulation/models"
 	"StantStantov/ASS/internal/ui/input"
@@ -45,7 +46,7 @@ func (mainMenu MainMenu) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		logsWidth := windowWidth - infoTablesWidth
 		logsHeight := windowHeight
-		mainMenu.Logs = LogsWindow{Buffer: mainMenu.Logs.Buffer, Model: viewport.New(logsWidth, logsHeight)}
+		mainMenu.Logs = LogsWindow{Buffer: mainMenu.Logs.Buffer, LogBuffer: mainMenu.Logs.LogBuffer, Model: viewport.New(logsWidth, logsHeight)}
 	}
 
 	return mainMenu, nextFrame
@@ -62,7 +63,9 @@ func (mainMenu MainMenu) View() string {
 }
 
 type LogsWindow struct {
-	Buffer *strings.Builder
+	Buffer    *strings.Builder
+	LogBuffer *framebuffer.Buffer
+
 	viewport.Model
 }
 
@@ -75,13 +78,15 @@ func (lw LogsWindow) Update(tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (lw LogsWindow) View() string {
+	defer lw.Buffer.Reset()
+
+	framebuffer.String(lw.LogBuffer, lw.Buffer)
 	logsToRender := lw.Buffer.String()
 	logsToRenderWrapped := lipgloss.NewStyle().Width(lw.Model.Width).Render(logsToRender)
 
 	lw.Model.SetContent(logsToRenderWrapped)
-	viewport := lw.Model.View()
 
-	return viewport
+	return lw.Model.View()
 }
 
 type InfoWindow struct {

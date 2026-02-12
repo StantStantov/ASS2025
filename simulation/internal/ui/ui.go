@@ -3,6 +3,7 @@ package ui
 import (
 	"StantStantov/ASS/internal/simulation"
 	"StantStantov/ASS/internal/simulation/commands"
+	"StantStantov/ASS/internal/simulation/framebuffer"
 	"StantStantov/ASS/internal/ui/components"
 	"StantStantov/ASS/internal/ui/input"
 	"strings"
@@ -10,14 +11,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-var (
-	Input *input.InputSystem
+var Tea *tea.Program
 
-	Tea *tea.Program
-)
-
-func Init(commandsSystem *commands.CommandsSystem, logsBuffer *strings.Builder) {
-	Input = input.NewInputSystem(commandsSystem)
+func Init(commandsSystem *commands.CommandsSystem, logsBuffer *framebuffer.Buffer) {
+	input := input.NewInputSystem(commandsSystem)
 
 	commands.RegisterCommand(commandsSystem, commands.QuitCommand, func() {
 		Tea.Quit()
@@ -28,9 +25,9 @@ func Init(commandsSystem *commands.CommandsSystem, logsBuffer *strings.Builder) 
 	})
 
 	mainMenu := components.MainMenu{
-		Input:      Input,
-		Info:       components.InfoWindow{Buffer: &strings.Builder{}},
-		Logs:       components.LogsWindow{Buffer: logsBuffer},
+		Input: input,
+		Info:  components.InfoWindow{Buffer: &strings.Builder{}},
+		Logs:  components.LogsWindow{Buffer: &strings.Builder{}, LogBuffer: logsBuffer},
 	}
 	Tea = tea.NewProgram(
 		mainMenu,

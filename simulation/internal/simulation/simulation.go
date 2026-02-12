@@ -5,6 +5,7 @@ import (
 	"StantStantov/ASS/internal/simulation/buffer"
 	"StantStantov/ASS/internal/simulation/commands"
 	"StantStantov/ASS/internal/simulation/dispatchers"
+	"StantStantov/ASS/internal/simulation/framebuffer"
 	"StantStantov/ASS/internal/simulation/metrics"
 	"StantStantov/ASS/internal/simulation/pools"
 	"StantStantov/ASS/internal/simulation/responders"
@@ -22,6 +23,8 @@ var (
 	RespondersSystem *responders.RespondersSystem = nil
 	MetricsSystem    *metrics.MetricsSystem       = nil
 
+	Logbuffer *framebuffer.Buffer = nil
+
 	IsPaused    bool   = true
 	TickCounter uint64 = 0
 )
@@ -31,6 +34,7 @@ func Init(
 	respondersAmount uint64,
 	chanceToCrash float32,
 	chanceToHandle float32,
+	logbuffer *framebuffer.Buffer,
 	logger *logging.Logger,
 ) {
 	commandsSystem := commands.NewCommandsSystem()
@@ -76,6 +80,8 @@ func Init(
 	RespondersSystem = respondersSystem
 	MetricsSystem = metricsSystem
 
+	Logbuffer = logbuffer 
+
 	IsPaused = true
 	TickCounter = 0
 }
@@ -95,6 +101,7 @@ func RunEventLoop() {
 			if !IsPaused {
 				agents.ProcessAgentSystem(AgentsSystem)
 				responders.ProcessRespondersSystem(RespondersSystem)
+				framebuffer.Next(Logbuffer)
 				TickCounter++
 			}
 
