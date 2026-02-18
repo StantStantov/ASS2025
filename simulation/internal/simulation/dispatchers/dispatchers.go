@@ -6,6 +6,7 @@ import (
 	"StantStantov/ASS/internal/simulation/models"
 	"StantStantov/ASS/internal/simulation/pools"
 
+	"github.com/StantStantov/rps/swamp/behaivors/buffers"
 	"github.com/StantStantov/rps/swamp/logging"
 	"github.com/StantStantov/rps/swamp/logging/logfmt"
 )
@@ -60,39 +61,32 @@ func SaveAlerts(system *DispatchSystem, jobs ...models.Job) {
 	)
 }
 
-func GetFreeJobs(system *DispatchSystem, setBuffer []models.Job) []models.Job {
+func GetFreeJobs(system *DispatchSystem, setBuffer *buffers.SetBuffer[models.Job, uint64]) {
 	logging.GetThenSendDebug(
 		system.Logger,
 		"going to dispatch jobs",
 		func(event *logging.Event, level logging.Level) error {
-			logfmt.Integer(event, "jobs.requested_amount", len(setBuffer))
+			logfmt.Integer(event, "jobs.requested_amount", len(setBuffer.Array))
 
 			return nil
 		},
 	)
 
-	ids := make([]uint64, len(setBuffer))
-	ids = pools.GetFromPool(system.AlertsPool, ids)
-	setBuffer = buffer.GetMultipleFromBuffer(system.AlertsBuffer, setBuffer, ids...)
+	ids := make([]uint64, cap(setBuffer.Array))
+	idsBuffer := &buffers.SetBuffer[uint64, uint64]{Array: ids}
+	pools.GetFromPool(system.AlertsPool, idsBuffer)
+	buffer.GetMultipleFromBuffer(system.AlertsBuffer, setBuffer, ids...)
 
 	logging.GetThenSendInfo(
 		system.Logger,
 		"dispatched jobs",
 		func(event *logging.Event, level logging.Level) error {
-			amounts := make([]int, len(setBuffer))
-			for i, job := range setBuffer {
-				amounts[i] = len(job.Alerts)
-			}
-
-			logfmt.Integer(event, "jobs.requested_amount", len(setBuffer))
+			logfmt.Integer(event, "jobs.requested_amount", len(setBuffer.Array))
 			logfmt.Unsigneds(event, "jobs.ids", ids...)
-			logfmt.Integers(event, "jobs.alerts.amount", amounts...)
 
 			return nil
 		},
 	)
-
-	return setBuffer
 }
 
 func PutBusyJobs(system *DispatchSystem, jobs ...models.Job) {
@@ -104,13 +98,7 @@ func PutBusyJobs(system *DispatchSystem, jobs ...models.Job) {
 		system.Logger,
 		"returned jobs",
 		func(event *logging.Event, level logging.Level) error {
-			amounts := make([]int, len(jobs))
-			for i, job := range jobs {
-				amounts[i] = len(job.Alerts)
-			}
-
 			logfmt.Unsigneds(event, "jobs.ids", ids...)
-			logfmt.Integers(event, "jobs.alerts.amount", amounts...)
 
 			return nil
 		},

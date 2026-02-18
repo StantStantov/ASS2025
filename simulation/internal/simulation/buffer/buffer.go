@@ -3,9 +3,10 @@ package buffer
 import (
 	"StantStantov/ASS/internal/simulation/metrics"
 	"StantStantov/ASS/internal/simulation/models"
-	"sync"
 	"fmt"
+	"sync"
 
+	"github.com/StantStantov/rps/swamp/behaivors/buffers"
 	"github.com/StantStantov/rps/swamp/bools"
 	"github.com/StantStantov/rps/swamp/collections/sparsemap"
 	"github.com/StantStantov/rps/swamp/logging"
@@ -99,30 +100,23 @@ func AddIntoBuffer(system *BufferSystem, jobs ...models.Job) {
 	)
 }
 
-func GetMultipleFromBuffer(system *BufferSystem, setBuffer []models.Job, ids ...uint64) []models.Job {
+func GetMultipleFromBuffer(system *BufferSystem, setBuffer *buffers.SetBuffer[models.Job, uint64], ids ...uint64) {
 	system.Mutex.Lock()
 	defer system.Mutex.Unlock()
 
-	oksGet := make([]bool, len(setBuffer))
-	setBuffer, oksGet = sparsemap.GetFromSparseMap(system.Values, setBuffer, oksGet, ids...)
+	oksGet := make([]bool, len(setBuffer.Array))
+	setBuffer.Array, oksGet = sparsemap.GetFromSparseMap(system.Values, setBuffer.Array, oksGet, ids...)
 
 	logging.GetThenSendInfo(
 		system.Logger,
 		"got alerts from buffer",
 		func(event *logging.Event, level logging.Level) error {
-			ids := make([]uint64, len(setBuffer))
-			amounts := make([]int, len(setBuffer))
-			for i, job := range setBuffer {
-				ids[i] = job.Id
-				amounts[i] = len(job.Alerts)
-			}
+			ids := make([]uint64, setBuffer.Length)
+			ids = models.JobsToIds(setBuffer.Array, ids)
 
 			logfmt.Unsigneds(event, "jobs.ids", ids...)
-			logfmt.Integers(event, "jobs.alerts.amounts", amounts...)
 
 			return nil
 		},
 	)
-
-	return setBuffer
 }

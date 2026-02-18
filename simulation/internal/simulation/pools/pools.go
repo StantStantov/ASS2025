@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/StantStantov/rps/swamp/behaivors/buffers"
 	"github.com/StantStantov/rps/swamp/bools"
 	"github.com/StantStantov/rps/swamp/collections/sparsemap"
 	"github.com/StantStantov/rps/swamp/collections/sparseset"
@@ -64,7 +65,8 @@ func MoveIfNewIntoPool(system *PoolSystem, jobs ...models.Job) {
 
 	jobsNewAmount := bools.CountFalse[uint64](arePresent...)
 	jobsFiltered := make([]models.Job, jobsNewAmount)
-	jobsFiltered = filters.KeepIfFalse(jobsFiltered, jobs, arePresent)
+	jobsBuffer := &buffers.SetBuffer[models.Job, uint64]{Array: jobsFiltered}
+	filters.KeepIfFalse(jobsBuffer, jobs, arePresent)
 
 	idsFiltered := make([]uint64, jobsNewAmount)
 	nodesFiltered := make([]*poolNode, jobsNewAmount)
@@ -100,7 +102,7 @@ func MoveIfNewIntoPool(system *PoolSystem, jobs ...models.Job) {
 	)
 }
 
-func GetFromPool(system *PoolSystem, setBuffer []uint64) []uint64 {
+func GetFromPool(system *PoolSystem, setBuffer *buffers.SetBuffer[uint64, uint64]) {
 	system.Mutex.Lock()
 	defer system.Mutex.Unlock()
 
@@ -110,7 +112,7 @@ func GetFromPool(system *PoolSystem, setBuffer []uint64) []uint64 {
 		func(event *logging.Event, level logging.Level) error {
 			logfmt.Unsigned(event, "jobs.queued_amount", system.Queue.Length)
 			logfmt.Unsigned(event, "jobs.locked_amount", sparseset.Length(system.Locked))
-			logfmt.Integer(event, "jobs.requested_amount", len(setBuffer))
+			logfmt.Integer(event, "jobs.requested_amount", len(setBuffer.Array))
 
 			return nil
 		},
@@ -129,11 +131,11 @@ func GetFromPool(system *PoolSystem, setBuffer []uint64) []uint64 {
 	areLocked := make([]bool, queue.Length)
 	areLocked = sparseset.PresentInSparseSet(system.Locked, areLocked, allIds...)
 
-	setBuffer = filters.KeepIfFalse(setBuffer, allIds, areLocked)
+	filters.KeepIfFalse(setBuffer, allIds, areLocked)
 
-	jobsToLockAmount := uint64(len(setBuffer))
+	jobsToLockAmount := setBuffer.Length
 	lockedJobs := make([]bool, jobsToLockAmount)
-	lockedJobs = sparseset.AddIntoSparseSet(system.Locked, lockedJobs, setBuffer...)
+	lockedJobs = sparseset.AddIntoSparseSet(system.Locked, lockedJobs, setBuffer.Array...)
 	if !bools.AllTrue(lockedJobs...) {
 		panic(fmt.Sprintf("Lock Pool Jobs %v %v", setBuffer, lockedJobs))
 	}
@@ -145,7 +147,7 @@ func GetFromPool(system *PoolSystem, setBuffer []uint64) []uint64 {
 	}
 
 	addTimestamps := make([]bool, jobsToLockAmount)
-	sparsemap.SaveIntoSparseMap(system.Timestamps, addTimestamps, setBuffer, timestamps)
+	sparsemap.SaveIntoSparseMap(system.Timestamps, addTimestamps, setBuffer.Array, timestamps)
 	if !bools.AllTrue(lockedJobs...) {
 		panic(fmt.Sprintf("Added Timestamps %v %v", setBuffer, lockedJobs))
 	}
@@ -156,13 +158,11 @@ func GetFromPool(system *PoolSystem, setBuffer []uint64) []uint64 {
 		system.Logger,
 		"got pending jobs from pool",
 		func(event *logging.Event, level logging.Level) error {
-			logfmt.Unsigneds(event, "jobs.ids", setBuffer...)
+			logfmt.Unsigneds(event, "jobs.ids", setBuffer.Array...)
 
 			return nil
 		},
 	)
-
-	return setBuffer
 }
 
 func RemoveFromPool(system *PoolSystem, ids ...uint64) {
@@ -176,7 +176,8 @@ func RemoveFromPool(system *PoolSystem, ids ...uint64) {
 
 	nodesToRemoveAmount := bools.CountTrue[uint64](arePresent...)
 	nodesToRemove := make([]*poolNode, minLength)
-	nodesToRemove = filters.KeepIfTrue(nodesToRemove, nodes, arePresent)
+	nodesBuffer := &buffers.SetBuffer[*poolNode, uint64]{Array: nodesToRemove}
+	filters.KeepIfTrue(nodesBuffer, nodes, arePresent)
 
 	removedFromPresent := make([]bool, nodesToRemoveAmount)
 	removedFromPresent = sparsemap.RemoveFromSparseMap(system.Present, removedFromPresent, ids...)
@@ -215,7 +216,8 @@ func RemoveFromPool(system *PoolSystem, ids ...uint64) {
 		"removed finished jobs from pool",
 		func(event *logging.Event, level logging.Level) error {
 			idsRemoved := make([]uint64, minLength)
-			idsRemoved = filters.KeepIfTrue(idsRemoved, ids, arePresent)
+			idsBuffer := &buffers.SetBuffer[uint64, uint64]{Array: idsRemoved}
+			filters.KeepIfTrue(idsBuffer, ids, arePresent)
 			logfmt.Unsigneds(event, "jobs.ids", idsRemoved...)
 
 			return nil

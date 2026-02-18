@@ -1,5 +1,7 @@
 package models
 
+type AgentId = uint64
+
 type Job struct {
 	Id     uint64
 	Alerts []MachineInfo

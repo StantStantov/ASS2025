@@ -8,6 +8,7 @@ import (
 	"iter"
 	"math/rand"
 
+	"github.com/StantStantov/rps/swamp/behaivors/buffers"
 	"github.com/StantStantov/rps/swamp/bools"
 	"github.com/StantStantov/rps/swamp/collections/sparsemap"
 	"github.com/StantStantov/rps/swamp/collections/sparseset"
@@ -69,7 +70,8 @@ func ProcessRespondersSystem(system *RespondersSystem) {
 	respondersFree = sparseset.GetAllFromSparseSet(system.Free, respondersFree)
 
 	jobsToBusy := make([]models.Job, amountFree)
-	jobsToBusy = dispatchers.GetFreeJobs(system.Dispatcher, jobsToBusy)
+	jobsToBusyBuffer := &buffers.SetBuffer[models.Job, uint64]{Array: jobsToBusy}
+	dispatchers.GetFreeJobs(system.Dispatcher, jobsToBusyBuffer)
 
 	minLength := uint64(len(jobsToBusy))
 	respondersToBusy := respondersFree[:minLength]
@@ -114,7 +116,9 @@ func ProcessRespondersSystem(system *RespondersSystem) {
 	amountFreed, amountStillBusy := bools.CountBools[models.ResponderId, models.ResponderId](areFreed...)
 	respondersStillBusy := make([]models.ResponderId, amountStillBusy)
 	respondersFreed := make([]models.ResponderId, amountFreed)
-	respondersStillBusy, respondersFreed = filters.SeparateByBools(respondersStillBusy, respondersFreed, idsBusy, areFreed)
+	stillBusyBuffer := &buffers.SetBuffer[models.ResponderId, uint64]{Array: respondersStillBusy}
+	freedBuffer := &buffers.SetBuffer[models.ResponderId, uint64]{Array: respondersFreed}
+	filters.SeparateByBools(stillBusyBuffer, freedBuffer, idsBusy, areFreed)
 
 	jobsToFree := make([]models.Job, len(respondersFreed))
 	gotJobsToFree := make([]bool, len(respondersFreed))

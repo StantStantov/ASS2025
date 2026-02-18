@@ -6,6 +6,7 @@ import (
 	"StantStantov/ASS/internal/simulation/models"
 	"math/rand"
 
+	"github.com/StantStantov/rps/swamp/behaivors/buffers"
 	"github.com/StantStantov/rps/swamp/bools"
 	"github.com/StantStantov/rps/swamp/filters"
 	"github.com/StantStantov/rps/swamp/logging"
@@ -13,19 +14,17 @@ import (
 )
 
 type AgentSystem struct {
-	AgentsIds        []AgentId
+	AgentsIds        []models.AgentId
 	MinChanceToCrash float32
 
-	Silent  []AgentId
-	Alarmed []AgentId
+	Silent  []models.AgentId
+	Alarmed []models.AgentId
 
 	Dispatcher *dispatchers.DispatchSystem
 
 	Metrics *metrics.MetricsSystem
 	Logger  *logging.Logger
 }
-
-type AgentId = uint64
 
 func NewAgentSystem(
 	capacity uint64,
@@ -36,14 +35,14 @@ func NewAgentSystem(
 ) *AgentSystem {
 	system := &AgentSystem{}
 
-	system.AgentsIds = make([]AgentId, capacity)
+	system.AgentsIds = make([]models.AgentId, capacity)
 	for i := range capacity {
-		system.AgentsIds[i] = AgentId(i)
+		system.AgentsIds[i] = models.AgentId(i)
 	}
 	system.MinChanceToCrash = minChanceToCrash
 
-	system.Silent = []AgentId{}
-	system.Alarmed = []AgentId{}
+	system.Silent = []models.AgentId{}
+	system.Alarmed = []models.AgentId{}
 
 	system.Dispatcher = dispatcher
 
@@ -64,10 +63,11 @@ func ProcessAgentSystem(system *AgentSystem) {
 	}
 
 	alarmedAmount, silentAmount := bools.CountBools[uint64, uint64](areAlarmed...)
-	silentAgents := make([]AgentId, silentAmount)
-	alarmedAgents := make([]AgentId, alarmedAmount)
-
-	silentAgents, alarmedAgents = filters.SeparateByBools(silentAgents, alarmedAgents, system.AgentsIds, areAlarmed)
+	silentAgents := make([]models.AgentId, silentAmount)
+	alarmedAgents := make([]models.AgentId, alarmedAmount)
+	silentBuffer := &buffers.SetBuffer[models.AgentId, uint64]{Array: silentAgents}
+	alarmedBuffer := &buffers.SetBuffer[models.AgentId, uint64]{Array: alarmedAgents}
+	filters.SeparateByBools(silentBuffer, alarmedBuffer, system.AgentsIds, areAlarmed)
 
 	jobs := make([]models.Job, len(alarmedAgents))
 	for i, id := range alarmedAgents {
