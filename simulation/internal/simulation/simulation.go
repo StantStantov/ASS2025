@@ -1,6 +1,7 @@
 package simulation
 
 import (
+	ptime "StantStantov/ASS/internal/common/time"
 	"StantStantov/ASS/internal/simulation/agents"
 	"StantStantov/ASS/internal/simulation/buffer"
 	"StantStantov/ASS/internal/simulation/commands"
@@ -9,7 +10,6 @@ import (
 	"StantStantov/ASS/internal/simulation/metrics"
 	"StantStantov/ASS/internal/simulation/pools"
 	"StantStantov/ASS/internal/simulation/responders"
-	"time"
 
 	"github.com/StantStantov/rps/swamp/logging"
 )
@@ -25,11 +25,13 @@ var (
 
 	Logbuffer *framebuffer.Buffer = nil
 
-	IsPaused    bool   = true
-	TickCounter uint64 = 0
+	MsPerUpdate float64 = 1.000
+	IsPaused    bool    = true
+	TickCounter uint64  = 0
 )
 
 func Init(
+	msPerUpdate float64,
 	agentsAmount uint64,
 	respondersAmount uint64,
 	chanceToCrash float32,
@@ -80,24 +82,24 @@ func Init(
 	RespondersSystem = respondersSystem
 	MetricsSystem = metricsSystem
 
-	Logbuffer = logbuffer 
+	Logbuffer = logbuffer
 
+	MsPerUpdate = msPerUpdate
 	IsPaused = true
 	TickCounter = 0
 }
 
 func RunEventLoop() {
-	msPerUpdate := 1.000
-	previous := TimeNowInSeconds()
+	previous := ptime.TimeNowInSeconds()
 	lag := 0.0
 	for {
-		current := TimeNowInSeconds()
+		current := ptime.TimeNowInSeconds()
 		elapsed := current - previous
 		previous = current
 		lag += elapsed
 
 		commands.ProcessCommandsSystem(CommandsSystem)
-		for lag >= msPerUpdate {
+		for lag >= MsPerUpdate {
 			if !IsPaused {
 				agents.ProcessAgentSystem(AgentsSystem)
 				responders.ProcessRespondersSystem(RespondersSystem)
@@ -105,13 +107,7 @@ func RunEventLoop() {
 				TickCounter++
 			}
 
-			lag -= msPerUpdate
+			lag -= MsPerUpdate
 		}
 	}
-}
-
-func TimeNowInSeconds() float64 {
-	timestamp := time.Now()
-
-	return float64(timestamp.UnixNano() / 1e9)
 }

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/StantStantov/rps/swamp/atomic"
 	"github.com/StantStantov/rps/swamp/collections/sparsemap"
 	"github.com/StantStantov/rps/swamp/collections/sparseset"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -40,7 +41,7 @@ func (mainMenu MainMenu) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		windowWidth := msg.Width - 2*borderWidth
 		windowHeight := msg.Height - borderHeight
 
-		infoTablesWidth := int(float32(windowWidth) * 0.2)
+		infoTablesWidth := int(float32(windowWidth) * 0.25)
 		infoTablesHeight := windowHeight
 		mainMenu.Info = InfoWindow{Buffer: mainMenu.Info.Buffer, Model: viewport.New(infoTablesWidth, infoTablesHeight)}
 
@@ -111,14 +112,14 @@ func (iw InfoWindow) View() string {
 	}
 
 	fmt.Fprintf(iw.Buffer, "Simulation:\n")
-	fmt.Fprintf(iw.Buffer, "Status:          %s\n", status)
-	fmt.Fprintf(iw.Buffer, "Tick:            %v\n", simulation.TickCounter)
+	fmt.Fprintf(iw.Buffer, "Status:    %s\n", status)
+	fmt.Fprintf(iw.Buffer, "Tick:      %v\n", simulation.TickCounter)
 	fmt.Fprintf(iw.Buffer, "\n")
 
 	fmt.Fprintf(iw.Buffer, "Agents:\n")
-	fmt.Fprintf(iw.Buffer, "Ids:             %v\n", simulation.AgentsSystem.AgentsIds)
-	fmt.Fprintf(iw.Buffer, "Silent:          %v\n", simulation.AgentsSystem.Silent)
-	fmt.Fprintf(iw.Buffer, "Alarmed:         %v\n", simulation.AgentsSystem.Alarmed)
+	fmt.Fprintf(iw.Buffer, "Ids:       %v\n", simulation.AgentsSystem.AgentsIds)
+	fmt.Fprintf(iw.Buffer, "Silent:    %v\n", simulation.AgentsSystem.Silent)
+	fmt.Fprintf(iw.Buffer, "Alarmed:   %v\n", simulation.AgentsSystem.Alarmed)
 	fmt.Fprintf(iw.Buffer, "\n")
 
 	jobsBufferedAmount := sparsemap.Length(simulation.Buffer.Values)
@@ -132,8 +133,8 @@ func (iw InfoWindow) View() string {
 	}
 
 	fmt.Fprintf(iw.Buffer, "Buffer:\n")
-	fmt.Fprintf(iw.Buffer, "Ids:             %v\n", jobsIds)
-	fmt.Fprintf(iw.Buffer, "Alerts:          %v\n", jobsAlertsAmounts)
+	fmt.Fprintf(iw.Buffer, "Ids:       %v\n", jobsIds)
+	fmt.Fprintf(iw.Buffer, "Alerts:    %v\n", jobsAlertsAmounts)
 	fmt.Fprintf(iw.Buffer, "\n")
 
 	jobsQueuedAmount := sparsemap.Length(simulation.Pool.Present)
@@ -144,24 +145,31 @@ func (iw InfoWindow) View() string {
 	jobsQueuedLockedIds = sparseset.GetAllFromSparseSet(simulation.Pool.Locked, jobsQueuedLockedIds)
 
 	fmt.Fprintf(iw.Buffer, "Pool:\n")
-	fmt.Fprintf(iw.Buffer, "Ids:             %v\n", jobsQueuedIds)
-	fmt.Fprintf(iw.Buffer, "Locked:          %v\n", jobsQueuedLockedIds)
+	fmt.Fprintf(iw.Buffer, "Ids:       %v\n", jobsQueuedIds)
+	fmt.Fprintf(iw.Buffer, "Locked:    %v\n", jobsQueuedLockedIds)
 	fmt.Fprintf(iw.Buffer, "\n")
 
 	respondersFreeAmount := sparseset.Length(simulation.RespondersSystem.Free)
-	respondersFree := make([]models.ResponderId, respondersFreeAmount)
-	respondersFree = sparseset.GetAllFromSparseSet(simulation.RespondersSystem.Free, respondersFree)
+	respondersFree := make([]models.ResponderId, 0, respondersFreeAmount)
+	respondersFreeEntries := simulation.RespondersSystem.Free.Dense
+	for _, id := range respondersFreeEntries {
+		respondersFree = append(respondersFree, id)
+	}
+
 	respondersBusyAmount := sparsemap.Length(simulation.RespondersSystem.Busy)
-	respondersBusy := make([]models.ResponderId, respondersBusyAmount)
-	respondersBusy = sparsemap.GetAllKeysFromSparseMap(simulation.RespondersSystem.Busy, respondersBusy)
+	respondersBusy := make([]models.ResponderId, 0, respondersBusyAmount)
+	respondersBusyEntries := simulation.RespondersSystem.Busy.Dense
+	for _, entry := range respondersBusyEntries {
+		respondersBusy = append(respondersBusy, entry.Index)
+	}
 
 	fmt.Fprintf(iw.Buffer, "Responders:\n")
-	fmt.Fprintf(iw.Buffer, "Ids:             %v\n", simulation.RespondersSystem.Responders)
-	fmt.Fprintf(iw.Buffer, "Free:            %v\n", respondersFree)
-	fmt.Fprintf(iw.Buffer, "Busy:            %v\n", respondersBusy)
+	fmt.Fprintf(iw.Buffer, "Ids:       %v\n", simulation.RespondersSystem.Responders)
+	fmt.Fprintf(iw.Buffer, "Free:      %v\n", respondersFree)
+	fmt.Fprintf(iw.Buffer, "Busy:      %v\n", respondersBusy)
 	fmt.Fprintf(iw.Buffer, "\n")
 
-	lineWidth := 32
+	lineWidth := 36
 	metricsAmount := len(simulation.MetricsSystem.Metrics)
 	metricsToPrint := make([]metrics.Metric, metricsAmount)
 	metricsToPrint = metrics.GetMetrics(simulation.MetricsSystem, metricsToPrint)
@@ -171,6 +179,36 @@ func (iw InfoWindow) View() string {
 		spacesToPrint := lineWidth - len(metric.Name)
 		fmt.Fprintf(iw.Buffer, "%s:%*v\n", metric.Name, spacesToPrint, metric.Value)
 	}
+
+	spacesToPrint := lineWidth - len("time_in_pool_seconds")
+	timeAverage := float64(0)
+	if simulation.Pool.SpentTimeInPool != 0 {
+		timeAverage = simulation.Pool.SpentTimeInPool / float64(simulation.Pool.PoppedAmount)
+	}
+	fmt.Fprintf(iw.Buffer, "%s:%*.2f\n", "time_in_pool_seconds", spacesToPrint, timeAverage)
+
+	spacesToPrint = lineWidth - len("rejection_percentage")
+	allJobsAtomic := simulation.MetricsSystem.Metrics[metrics.JobsBufferedCounter]
+	skippedJobsAtomic := simulation.MetricsSystem.Metrics[metrics.JobsSkippedCounter]
+	allJobs := atomic.LoadUint64(allJobsAtomic)
+	skippedJobs := atomic.LoadUint64(skippedJobsAtomic)
+	rejectionPercentage := float64(0)
+	if skippedJobs != 0 {
+		rejectionPercentage = float64(skippedJobs) / float64(allJobs)
+	}
+	fmt.Fprintf(iw.Buffer, "%s:%*.2f\n", "rejection_percentage", spacesToPrint, rejectionPercentage)
+
+	spacesToPrint = lineWidth - len("load_percentage")
+	freeRespsAtomic := simulation.MetricsSystem.Metrics[metrics.RespondersFreeCounter]
+	busyRespsAtomic := simulation.MetricsSystem.Metrics[metrics.RespondersBusyCounter]
+	freeResps := atomic.LoadUint64(freeRespsAtomic)
+	busyResps := atomic.LoadUint64(busyRespsAtomic)
+	loadPercentage := float64(0)
+	if skippedJobs != 0 {
+		loadPercentage = float64(busyResps) / float64(freeResps)
+	}
+	fmt.Fprintf(iw.Buffer, "%s:%*.2f\n", "load_percentage", spacesToPrint, loadPercentage)
+
 	fmt.Fprintf(iw.Buffer, "\n")
 
 	frame := iw.Buffer.String()

@@ -20,12 +20,14 @@ func main() {
 		256,
 	)
 
-	agentsAmount := uint64(4)
-	respondersAmount := uint64(2)
+	msPerUpdate := float64(1.000)
+	agentsAmount := uint64(8)
+	respondersAmount := uint64(4)
 	chanceToCrash := float32(0.5)
 	chanceToHandle := float32(0.5)
 
 	simulation.Init(
+		msPerUpdate,
 		agentsAmount,
 		respondersAmount,
 		chanceToCrash,

@@ -14,7 +14,9 @@ const (
 	AgentsAlarmingCounter
 	JobsBufferedCounter
 	JobsPendingCounter
+	JobsSkippedCounter
 	JobsLockedCounter
+	JobsUnlockedCounter
 	AlertsBufferedCounter
 	RespondersFreeCounter
 	RespondersBusyCounter
@@ -25,7 +27,9 @@ var MetricTypesNames = []string{
 	"agents_alarming_total",
 	"jobs_added_to_buffer_total",
 	"jobs_added_to_pool_total",
+	"jobs_skipped_pool_total",
 	"jobs_locked_total",
+	"jobs_unlocked_total",
 	"alerts_added_to_buffer_total",
 	"responders_free_total",
 	"responders_busy_total",
