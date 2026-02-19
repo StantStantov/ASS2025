@@ -16,10 +16,7 @@ var Tea *tea.Program
 func Init(commandsSystem *commands.CommandsSystem, logsBuffer *framebuffer.Buffer) {
 	input := input.NewInputSystem(commandsSystem)
 
-	commands.RegisterCommand(commandsSystem, commands.QuitCommand, func() {
-		Tea.Quit()
-		Tea.Wait()
-	})
+	commands.RegisterCommand(commandsSystem, commands.QuitCommand, StopEventLoop)
 	commands.RegisterCommand(commandsSystem, commands.PauseCommand, func() {
 		simulation.IsPaused = !simulation.IsPaused
 	})
@@ -37,4 +34,9 @@ func Init(commandsSystem *commands.CommandsSystem, logsBuffer *framebuffer.Buffe
 
 func RunEventLoop() {
 	Tea.Run()
+}
+
+func StopEventLoop() {
+	Tea.Quit()
+	Tea.Wait()
 }

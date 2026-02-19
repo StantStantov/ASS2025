@@ -188,10 +188,11 @@ func (iw InfoWindow) View() string {
 	fmt.Fprintf(iw.Buffer, "%s:%*.2f\n", "time_in_pool_seconds", spacesToPrint, timeAverage)
 
 	spacesToPrint = lineWidth - len("rejection_percentage")
-	allJobsAtomic := simulation.MetricsSystem.Metrics[metrics.JobsBufferedCounter]
+	addedJobsAtomic := simulation.MetricsSystem.Metrics[metrics.JobsPendingCounter]
 	skippedJobsAtomic := simulation.MetricsSystem.Metrics[metrics.JobsSkippedCounter]
-	allJobs := atomic.LoadUint64(allJobsAtomic)
+	addedJobs := atomic.LoadUint64(addedJobsAtomic)
 	skippedJobs := atomic.LoadUint64(skippedJobsAtomic)
+	allJobs := addedJobs + skippedJobs
 	rejectionPercentage := float64(0)
 	if skippedJobs != 0 {
 		rejectionPercentage = float64(skippedJobs) / float64(allJobs)
@@ -203,9 +204,10 @@ func (iw InfoWindow) View() string {
 	busyRespsAtomic := simulation.MetricsSystem.Metrics[metrics.RespondersBusyCounter]
 	freeResps := atomic.LoadUint64(freeRespsAtomic)
 	busyResps := atomic.LoadUint64(busyRespsAtomic)
+	allResps := freeResps + busyResps
 	loadPercentage := float64(0)
 	if skippedJobs != 0 {
-		loadPercentage = float64(busyResps) / float64(freeResps)
+		loadPercentage = float64(busyResps) / float64(allResps)
 	}
 	fmt.Fprintf(iw.Buffer, "%s:%*.2f\n", "load_percentage", spacesToPrint, loadPercentage)
 

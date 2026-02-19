@@ -68,7 +68,7 @@ func AddIntoBuffer(system *BufferSystem, jobs ...models.Job) {
 
 	movedIntoBuffer := make([]bool, len(jobs))
 	movedIntoBuffer = sparsemap.SaveIntoSparseMap(system.Values, movedIntoBuffer, ids, values)
-	if !bools.AllTrue(movedIntoBuffer...) {
+	if bools.AnyFalse(movedIntoBuffer...) {
 		panic(fmt.Sprintf("Save into Buffer %v %v", ids, movedIntoBuffer))
 	}
 

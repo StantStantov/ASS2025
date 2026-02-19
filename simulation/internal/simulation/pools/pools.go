@@ -84,7 +84,7 @@ func MoveIfNewIntoPool(system *PoolSystem, jobs ...models.Job) {
 
 	movedIntoPool := make([]bool, len(nodesFiltered))
 	movedIntoPool = sparsemap.AddIntoSparseMap(system.Present, movedIntoPool, idsFiltered, nodesFiltered)
-	if !bools.AllTrue(movedIntoPool...) {
+	if bools.AnyFalse(movedIntoPool...) {
 		panic(fmt.Sprintf("Add into Pool %v %v", idsFiltered, movedIntoPool))
 	}
 
@@ -136,7 +136,7 @@ func GetFromPool(system *PoolSystem, setBuffer *buffers.SetBuffer[uint64, uint64
 	jobsToLockAmount := setBuffer.Length
 	lockedJobs := make([]bool, jobsToLockAmount)
 	lockedJobs = sparseset.AddIntoSparseSet(system.Locked, lockedJobs, setBuffer.Array...)
-	if !bools.AllTrue(lockedJobs...) {
+	if bools.AnyFalse(lockedJobs...) {
 		panic(fmt.Sprintf("Lock Pool Jobs %v %v", setBuffer, lockedJobs))
 	}
 
@@ -148,7 +148,7 @@ func GetFromPool(system *PoolSystem, setBuffer *buffers.SetBuffer[uint64, uint64
 
 	addTimestamps := make([]bool, jobsToLockAmount)
 	sparsemap.SaveIntoSparseMap(system.Timestamps, addTimestamps, setBuffer.Array, timestamps)
-	if !bools.AllTrue(lockedJobs...) {
+	if bools.AnyFalse(lockedJobs...) {
 		panic(fmt.Sprintf("Added Timestamps %v %v", setBuffer, lockedJobs))
 	}
 
@@ -174,32 +174,35 @@ func RemoveFromPool(system *PoolSystem, ids ...uint64) {
 	arePresent := make([]bool, minLength)
 	nodes, arePresent = sparsemap.GetFromSparseMap(system.Present, nodes, arePresent, ids...)
 
-	nodesToRemoveAmount := bools.CountTrue[uint64](arePresent...)
-	nodesToRemove := make([]*poolNode, minLength)
+	toRemoveAmount := bools.CountTrue[uint64](arePresent...)
+	idsToRemove := make([]uint64, toRemoveAmount)
+	idsBuffer := &buffers.SetBuffer[uint64, uint64]{Array: idsToRemove}
+	filters.KeepIfTrue(idsBuffer, ids, arePresent)
+	nodesToRemove := make([]*poolNode, toRemoveAmount)
 	nodesBuffer := &buffers.SetBuffer[*poolNode, uint64]{Array: nodesToRemove}
 	filters.KeepIfTrue(nodesBuffer, nodes, arePresent)
 
-	removedFromPresent := make([]bool, nodesToRemoveAmount)
-	removedFromPresent = sparsemap.RemoveFromSparseMap(system.Present, removedFromPresent, ids...)
-	if !bools.AllTrue(removedFromPresent...) {
-		panic(fmt.Sprintf("Removed From Present %v %v", ids, removedFromPresent))
+	removedFromPresent := make([]bool, toRemoveAmount)
+	removedFromPresent = sparsemap.RemoveFromSparseMap(system.Present, removedFromPresent, idsToRemove...)
+	if bools.AnyFalse(removedFromPresent...) {
+		panic(fmt.Sprintf("Removed From Present %v %v", idsToRemove, removedFromPresent))
 	}
 
-	removedFromLocked := make([]bool, nodesToRemoveAmount)
-	removedFromLocked = sparseset.RemoveFromSparseSet(system.Locked, removedFromLocked, ids...)
-	if !bools.AllTrue(removedFromLocked...) {
-		panic(fmt.Sprintf("Removed From Locked %v %v", ids, removedFromLocked))
+	removedFromLocked := make([]bool, toRemoveAmount)
+	removedFromLocked = sparseset.RemoveFromSparseSet(system.Locked, removedFromLocked, idsToRemove...)
+	if bools.AnyFalse(removedFromLocked...) {
+		panic(fmt.Sprintf("Removed From Locked %v %v", idsToRemove, removedFromLocked))
 	}
 
 	removeNodesFromDoublyList(system.Queue, nodesToRemove...)
 
-	metrics.AddToMetric(system.Metrics, metrics.JobsUnlockedCounter, nodesToRemoveAmount)
+	metrics.AddToMetric(system.Metrics, metrics.JobsUnlockedCounter, toRemoveAmount)
 
-	getTimestamps := make([]bool, nodesToRemoveAmount)
-	timestampsPut := make([]float64, nodesToRemoveAmount)
-	sparsemap.GetFromSparseMap(system.Timestamps, timestampsPut, getTimestamps, ids...)
-	if !bools.AllTrue(getTimestamps...) {
-		panic(fmt.Sprintf("Get Timestamps %v %v", ids, getTimestamps))
+	getTimestamps := make([]bool, toRemoveAmount)
+	timestampsPut := make([]float64, toRemoveAmount)
+	sparsemap.GetFromSparseMap(system.Timestamps, timestampsPut, getTimestamps, idsToRemove...)
+	if bools.AnyFalse(getTimestamps...) {
+		panic(fmt.Sprintf("Get Timestamps %v %v", idsToRemove, getTimestamps))
 	}
 
 	timestampPopped := ptime.TimeNowInSeconds()
@@ -209,16 +212,13 @@ func RemoveFromPool(system *PoolSystem, ids ...uint64) {
 	}
 
 	system.SpentTimeInPool += timestampSpentInPool
-	system.PoppedAmount += nodesToRemoveAmount
+	system.PoppedAmount += toRemoveAmount
 
 	logging.GetThenSendInfo(
 		system.Logger,
 		"removed finished jobs from pool",
 		func(event *logging.Event, level logging.Level) error {
-			idsRemoved := make([]uint64, minLength)
-			idsBuffer := &buffers.SetBuffer[uint64, uint64]{Array: idsRemoved}
-			filters.KeepIfTrue(idsBuffer, ids, arePresent)
-			logfmt.Unsigneds(event, "jobs.ids", idsRemoved...)
+			logfmt.Unsigneds(event, "jobs.ids", idsToRemove...)
 
 			return nil
 		},

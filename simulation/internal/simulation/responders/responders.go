@@ -78,13 +78,13 @@ func ProcessRespondersSystem(system *RespondersSystem) {
 
 	removedFromFree := make([]bool, minLength)
 	removedFromFree = sparseset.RemoveFromSparseSet(system.Free, removedFromFree, respondersToBusy...)
-	if !bools.AllTrue(removedFromFree...) {
+	if bools.AnyFalse(removedFromFree...) {
 		panic(fmt.Sprintf("Remove from Free %v %v", respondersToBusy, removedFromFree))
 	}
 
 	addedToBusy := make([]bool, minLength)
 	addedToBusy = sparsemap.AddIntoSparseMap(system.Busy, addedToBusy, respondersToBusy, jobsToBusy)
-	if !bools.AllTrue(addedToBusy...) {
+	if bools.AnyFalse(addedToBusy...) {
 		panic(fmt.Sprintf("Add to Busy %v %v", respondersToBusy, addedToBusy))
 	}
 
@@ -123,7 +123,7 @@ func ProcessRespondersSystem(system *RespondersSystem) {
 	jobsToFree := make([]models.Job, len(respondersFreed))
 	gotJobsToFree := make([]bool, len(respondersFreed))
 	jobsToFree, gotJobsToFree = sparsemap.GetFromSparseMap(system.Busy, jobsToFree, gotJobsToFree, respondersFreed...)
-	if !bools.AllTrue(gotJobsToFree...) {
+	if bools.AnyFalse(gotJobsToFree...) {
 		panic(fmt.Sprintf("Get Jobs to Free %v %v %v", system.Busy.Dense, respondersFreed, gotJobsToFree))
 	}
 
@@ -131,13 +131,13 @@ func ProcessRespondersSystem(system *RespondersSystem) {
 
 	oksRemovedFreed := make([]bool, len(respondersFreed))
 	oksRemovedFreed = sparsemap.RemoveFromSparseMap(system.Busy, oksRemovedFreed, respondersFreed...)
-	if !bools.AllTrue(oksRemovedFreed...) {
+	if bools.AnyFalse(oksRemovedFreed...) {
 		panic(fmt.Sprintf("Remove Freed %v %v", respondersFreed, oksRemovedFreed))
 	}
 
 	oksAddedFreed := make([]bool, len(respondersFreed))
 	oksAddedFreed = sparseset.AddIntoSparseSet(system.Free, oksAddedFreed, respondersFreed...)
-	if !bools.AllTrue(oksAddedFreed...) {
+	if bools.AnyFalse(oksAddedFreed...) {
 		panic(fmt.Sprintf("Add Freed %v %v", respondersFreed, oksAddedFreed))
 	}
 
