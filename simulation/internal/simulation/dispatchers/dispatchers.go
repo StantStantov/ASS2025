@@ -38,19 +38,27 @@ func NewDispatchSystem(
 	return system
 }
 
-func SaveAlerts(system *DispatchSystem, jobs ...models.Job) {
-	buffer.AddIntoBuffer(system.AlertsBuffer, jobs...)
-	pools.MoveIfNewIntoPool(system.AlertsPool, jobs...)
+func SaveAlerts(system *DispatchSystem, ids []models.AgentId, alertsBatches [][]models.MachineInfo) {
+	logging.GetThenSendDebug(
+		system.Logger,
+		"going to save jobs",
+		func(event *logging.Event, level logging.Level) error {
+			logfmt.Integer(event, "jobs.requested_amount", len(ids))
+
+			return nil
+		},
+	)
+
+	buffer.AddIntoBuffer(system.AlertsBuffer, ids, alertsBatches)
+	pools.MoveIfNewIntoPool(system.AlertsPool, ids)
 
 	logging.GetThenSendInfo(
 		system.Logger,
 		"saved jobs",
 		func(event *logging.Event, level logging.Level) error {
-			ids := make([]uint64, len(jobs))
-			ids = models.JobsToIds(jobs, ids)
-			amounts := make([]int, len(jobs))
-			for i, job := range jobs {
-				amounts[i] = len(job.Alerts)
+			amounts := make([]int, len(alertsBatches))
+			for i, alerts := range alertsBatches {
+				amounts[i] = len(alerts)
 			}
 
 			logfmt.Unsigneds(event, "jobs.ids", ids...)
@@ -74,15 +82,33 @@ func GetFreeJobs(system *DispatchSystem, setBuffer *buffers.SetBuffer[models.Job
 
 	ids := make([]uint64, cap(setBuffer.Array))
 	idsBuffer := &buffers.SetBuffer[uint64, uint64]{Array: ids}
+	alertsBatches := make([][]models.MachineInfo, cap(setBuffer.Array))
+	alertsBuffer := &buffers.SetBuffer[[]models.MachineInfo, uint64]{Array: alertsBatches}
 	pools.GetFromPool(system.AlertsPool, idsBuffer)
-	buffer.GetMultipleFromBuffer(system.AlertsBuffer, setBuffer, ids...)
+	buffer.GetMultipleFromBuffer(system.AlertsBuffer, alertsBuffer, ids...)
+
+	minLength := min(idsBuffer.Length, alertsBuffer.Length)
+	for i := range minLength {
+		job := models.Job{
+			Id:     ids[i],
+			Alerts: alertsBatches[i],
+		}
+
+		buffers.AppendToSetBuffer(setBuffer, job)
+	}
 
 	logging.GetThenSendInfo(
 		system.Logger,
 		"dispatched jobs",
 		func(event *logging.Event, level logging.Level) error {
-			logfmt.Integer(event, "jobs.requested_amount", len(setBuffer.Array))
+			amounts := make([]int, len(alertsBatches))
+			for i, alerts := range alertsBatches {
+				amounts[i] = len(alerts)
+			}
+
+			logfmt.Unsigned(event, "jobs.returned_amount", setBuffer.Length)
 			logfmt.Unsigneds(event, "jobs.ids", ids...)
+			logfmt.Integers(event, "jobs.alerts.amounts", amounts...)
 
 			return nil
 		},
@@ -90,6 +116,16 @@ func GetFreeJobs(system *DispatchSystem, setBuffer *buffers.SetBuffer[models.Job
 }
 
 func PutBusyJobs(system *DispatchSystem, jobs ...models.Job) {
+	logging.GetThenSendDebug(
+		system.Logger,
+		"going to return jobs",
+		func(event *logging.Event, level logging.Level) error {
+			logfmt.Integer(event, "jobs.requested_amount", len(jobs))
+
+			return nil
+		},
+	)
+
 	ids := make([]uint64, len(jobs))
 	ids = models.JobsToIds(jobs, ids)
 	pools.RemoveFromPool(system.AlertsPool, ids...)

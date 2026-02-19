@@ -45,6 +45,7 @@ func Init(
 	)
 	bufferSystem := buffer.NewBufferSystem(
 		agentsAmount,
+		32,
 		metricsSystem,
 		logger,
 	)

@@ -53,30 +53,25 @@ func NewPoolSystem(
 	return system
 }
 
-func MoveIfNewIntoPool(system *PoolSystem, jobs ...models.Job) {
+func MoveIfNewIntoPool(system *PoolSystem, ids []models.AgentId) {
 	system.Mutex.Lock()
 	defer system.Mutex.Unlock()
 
-	ids := make([]uint64, len(jobs))
-	ids = models.JobsToIds(jobs, ids)
-
-	arePresent := make([]bool, len(jobs))
+	arePresent := make([]bool, len(ids))
 	arePresent = sparsemap.PresentInSparseMap(system.Present, arePresent, ids...)
 
-	jobsNewAmount := bools.CountFalse[uint64](arePresent...)
-	jobsFiltered := make([]models.Job, jobsNewAmount)
-	jobsBuffer := &buffers.SetBuffer[models.Job, uint64]{Array: jobsFiltered}
-	filters.KeepIfFalse(jobsBuffer, jobs, arePresent)
+	idsNewAmount := bools.CountFalse[uint64](arePresent...)
+	idsFiltered := make([]models.AgentId, idsNewAmount)
+	idsBuffer := &buffers.SetBuffer[models.AgentId, uint64]{Array: idsFiltered}
+	filters.KeepIfFalse(idsBuffer, ids, arePresent)
 
-	idsFiltered := make([]uint64, jobsNewAmount)
-	nodesFiltered := make([]*poolNode, jobsNewAmount)
-	for i, job := range jobsFiltered {
-		jobId := job.Id
-		idsFiltered[i] = jobId
+	nodesFiltered := make([]*poolNode, idsNewAmount)
+	for i := range idsBuffer.Length {
+		id := idsFiltered[i]
 		nodesFiltered[i] = &poolNode{
 			Next:  nil,
 			Prev:  nil,
-			Value: jobId,
+			Value: id,
 		}
 	}
 
@@ -88,7 +83,7 @@ func MoveIfNewIntoPool(system *PoolSystem, jobs ...models.Job) {
 		panic(fmt.Sprintf("Add into Pool %v %v", idsFiltered, movedIntoPool))
 	}
 
-	metrics.AddToMetric(system.Metrics, metrics.JobsPendingCounter, jobsNewAmount)
+	metrics.AddToMetric(system.Metrics, metrics.JobsPendingCounter, idsNewAmount)
 	metrics.AddToMetric(system.Metrics, metrics.JobsSkippedCounter, bools.CountTrue[uint64](arePresent...))
 
 	logging.GetThenSendInfo(

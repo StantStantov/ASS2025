@@ -5,7 +5,6 @@ import (
 	"StantStantov/ASS/internal/simulation/metrics"
 	"StantStantov/ASS/internal/simulation/models"
 	"fmt"
-	"iter"
 	"math/rand"
 
 	"github.com/StantStantov/rps/swamp/behaivors/buffers"
@@ -79,13 +78,13 @@ func ProcessRespondersSystem(system *RespondersSystem) {
 	removedFromFree := make([]bool, minLength)
 	removedFromFree = sparseset.RemoveFromSparseSet(system.Free, removedFromFree, respondersToBusy...)
 	if bools.AnyFalse(removedFromFree...) {
-		panic(fmt.Sprintf("Remove from Free %v %v", respondersToBusy, removedFromFree))
+		panic(fmt.Sprintf("Remove Busyed from Free %v %v", respondersToBusy, removedFromFree))
 	}
 
 	addedToBusy := make([]bool, minLength)
 	addedToBusy = sparsemap.AddIntoSparseMap(system.Busy, addedToBusy, respondersToBusy, jobsToBusy)
 	if bools.AnyFalse(addedToBusy...) {
-		panic(fmt.Sprintf("Add to Busy %v %v", respondersToBusy, addedToBusy))
+		panic(fmt.Sprintf("Add Busyed to Busy %v %v", respondersToBusy, addedToBusy))
 	}
 
 	logging.GetThenSendInfo(
@@ -132,13 +131,13 @@ func ProcessRespondersSystem(system *RespondersSystem) {
 	oksRemovedFreed := make([]bool, len(respondersFreed))
 	oksRemovedFreed = sparsemap.RemoveFromSparseMap(system.Busy, oksRemovedFreed, respondersFreed...)
 	if bools.AnyFalse(oksRemovedFreed...) {
-		panic(fmt.Sprintf("Remove Freed %v %v", respondersFreed, oksRemovedFreed))
+		panic(fmt.Sprintf("Remove Freed From Busy %v %v", respondersFreed, oksRemovedFreed))
 	}
 
 	oksAddedFreed := make([]bool, len(respondersFreed))
 	oksAddedFreed = sparseset.AddIntoSparseSet(system.Free, oksAddedFreed, respondersFreed...)
 	if bools.AnyFalse(oksAddedFreed...) {
-		panic(fmt.Sprintf("Add Freed %v %v", respondersFreed, oksAddedFreed))
+		panic(fmt.Sprintf("Add Freed To Free %v %v", respondersFreed, oksAddedFreed))
 	}
 
 	metrics.AddToMetric(system.Metrics, metrics.RespondersFreeCounter, FreeAmount(system))
@@ -154,94 +153,4 @@ func ProcessRespondersSystem(system *RespondersSystem) {
 			return nil
 		},
 	)
-}
-
-type responderList struct {
-	Head   *responderNode
-	Tail   *responderNode
-	Length uint64
-}
-
-type responderNode struct {
-	Next  *responderNode
-	Value models.ResponderId
-}
-
-func newResponderList() *responderList {
-	list := &responderList{}
-
-	node := &responderNode{Next: nil, Value: 0}
-	list.Head = node
-	list.Tail = node
-	list.Length = 0
-
-	return list
-}
-
-func pushResponders(list *responderList, responders ...models.ResponderId) {
-	for _, id := range responders {
-		node := &responderNode{Next: nil, Value: id}
-
-		tail := list.Tail
-		tail.Next = node
-		list.Tail = node
-	}
-	list.Length += uint64(len(responders))
-}
-
-func popResponder(list *responderList) (models.ResponderId, bool) {
-	if list.Length == 0 {
-		return 0, false
-	}
-
-	freeId := uint64(0)
-
-	head := list.Head
-	tail := list.Tail
-	next := head.Next
-	for {
-		if head == tail {
-			if next == nil {
-				return 0, false
-			}
-
-			tail.Next = next
-		} else {
-			freeId = next.Value
-
-			list.Head = next
-			list.Length--
-
-			return freeId, true
-		}
-	}
-}
-
-func popAllresponders(list *responderList) iter.Seq[models.ResponderId] {
-	return func(yield func(models.ResponderId) bool) {
-		for {
-			id, ok := popResponder(list)
-			if !ok {
-				return
-			}
-
-			if !yield(id) {
-				return
-			}
-		}
-	}
-}
-
-func IterResponders(list *responderList) iter.Seq[models.ResponderId] {
-	return func(yield func(models.ResponderId) bool) {
-		currentNode := list.Head
-		for currentNode != nil {
-			id := currentNode.Value
-			if !yield(id) {
-				return
-			}
-
-			currentNode = currentNode.Next
-		}
-	}
 }

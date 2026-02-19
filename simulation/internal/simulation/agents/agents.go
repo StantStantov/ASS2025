@@ -69,21 +69,17 @@ func ProcessAgentSystem(system *AgentSystem) {
 	alarmedBuffer := &buffers.SetBuffer[models.AgentId, uint64]{Array: alarmedAgents}
 	filters.SeparateByBools(silentBuffer, alarmedBuffer, system.AgentsIds, areAlarmed)
 
-	jobs := make([]models.Job, len(alarmedAgents))
+	alerts := make([][]models.MachineInfo, len(alarmedAgents))
 	for i, id := range alarmedAgents {
 		machineInfo := models.MachineInfo{Id: id}
-		job := models.Job{
-			Id:     id,
-			Alerts: []models.MachineInfo{machineInfo},
-		}
 
-		jobs[i] = job
+		alerts[i] = []models.MachineInfo{machineInfo}
 	}
+
+	dispatchers.SaveAlerts(system.Dispatcher, alarmedAgents, alerts)
 
 	system.Silent = silentAgents
 	system.Alarmed = alarmedAgents
-
-	dispatchers.SaveAlerts(system.Dispatcher, jobs...)
 
 	metrics.AddToMetric(system.Metrics, metrics.AgentsSilentCounter, uint64(len(system.Silent)))
 	metrics.AddToMetric(system.Metrics, metrics.AgentsAlarmingCounter, uint64(len(system.Alarmed)))

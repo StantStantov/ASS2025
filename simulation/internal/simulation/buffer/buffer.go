@@ -14,7 +14,8 @@ import (
 )
 
 type BufferSystem struct {
-	Values *sparsemap.SparseMap[uint64, models.Job]
+	Values         *sparsemap.SparseMap[uint64, []models.MachineInfo]
+	AlertsCapacity uint64
 
 	Mutex *sync.Mutex
 
@@ -24,12 +25,14 @@ type BufferSystem struct {
 
 func NewBufferSystem(
 	capacity uint64,
+	AlertsCapacity uint64,
 	metrics *metrics.MetricsSystem,
 	logger *logging.Logger,
 ) *BufferSystem {
 	system := &BufferSystem{}
 
-	system.Values = sparsemap.NewSparseMap[uint64, models.Job](capacity)
+	system.Values = sparsemap.NewSparseMap[uint64, []models.MachineInfo](capacity)
+	system.AlertsCapacity = AlertsCapacity
 
 	system.Mutex = &sync.Mutex{}
 
@@ -41,41 +44,39 @@ func NewBufferSystem(
 	return system
 }
 
-func AddIntoBuffer(system *BufferSystem, jobs ...models.Job) {
+func AddIntoBuffer(system *BufferSystem, ids []models.AgentId, alertsBatches [][]models.MachineInfo) {
 	system.Mutex.Lock()
 	defer system.Mutex.Unlock()
 
-	ids := make([]uint64, len(jobs))
-	ids = models.JobsToIds(jobs, ids)
-
-	values := make([]models.Job, len(jobs))
-	arePresent := make([]bool, len(jobs))
+	minLength := min(len(ids), len(alertsBatches))
+	values := make([][]models.MachineInfo, minLength)
+	arePresent := make([]bool, minLength)
 	values, arePresent = sparsemap.GetFromSparseMap(system.Values, values, arePresent, ids...)
 
 	iterNewValues := bools.IterOnlyFalse[uint64](arePresent...)
 	for i := range iterNewValues {
-		values[i] = jobs[i]
+		values[i] = alertsBatches[i]
 	}
 
 	iterOldValues := bools.IterOnlyTrue[uint64](arePresent...)
 	for i := range iterOldValues {
-		newValue := jobs[i]
+		newValue := alertsBatches[i]
 		oldValue := values[i]
 
-		oldValue.Alerts = append(oldValue.Alerts, newValue.Alerts...)
+		oldValue = append(oldValue, newValue...)
 		values[i] = oldValue
 	}
 
-	movedIntoBuffer := make([]bool, len(jobs))
+	movedIntoBuffer := make([]bool, minLength)
 	movedIntoBuffer = sparsemap.SaveIntoSparseMap(system.Values, movedIntoBuffer, ids, values)
 	if bools.AnyFalse(movedIntoBuffer...) {
 		panic(fmt.Sprintf("Save into Buffer %v %v", ids, movedIntoBuffer))
 	}
 
-	idsAdded := bools.CountTrue[uint64](arePresent...)
+	idsAdded := bools.CountFalse[uint64](arePresent...)
 	alertsAdded := uint64(0)
-	for _, job := range jobs {
-		alertsAdded += uint64(len(job.Alerts))
+	for _, alerts := range alertsBatches {
+		alertsAdded += uint64(len(alerts))
 	}
 
 	metrics.AddToMetric(system.Metrics, metrics.JobsBufferedCounter, idsAdded)
@@ -85,11 +86,9 @@ func AddIntoBuffer(system *BufferSystem, jobs ...models.Job) {
 		system.Logger,
 		"added new alerts into buffer",
 		func(event *logging.Event, level logging.Level) error {
-			ids := make([]uint64, len(jobs))
-			amounts := make([]int, len(jobs))
-			for i, job := range jobs {
-				ids[i] = job.Id
-				amounts[i] = len(job.Alerts)
+			amounts := make([]int, len(alertsBatches))
+			for i, alerts := range alertsBatches {
+				amounts[i] = len(alerts)
 			}
 
 			logfmt.Unsigneds(event, "jobs.ids", ids...)
@@ -100,21 +99,26 @@ func AddIntoBuffer(system *BufferSystem, jobs ...models.Job) {
 	)
 }
 
-func GetMultipleFromBuffer(system *BufferSystem, setBuffer *buffers.SetBuffer[models.Job, uint64], ids ...uint64) {
+func GetMultipleFromBuffer(system *BufferSystem, setBuffer *buffers.SetBuffer[[]models.MachineInfo, uint64], ids ...uint64) {
 	system.Mutex.Lock()
 	defer system.Mutex.Unlock()
 
 	oksGet := make([]bool, len(setBuffer.Array))
 	setBuffer.Array, oksGet = sparsemap.GetFromSparseMap(system.Values, setBuffer.Array, oksGet, ids...)
+	setBuffer.Length += uint64(len(setBuffer.Array))
 
 	logging.GetThenSendInfo(
 		system.Logger,
 		"got alerts from buffer",
 		func(event *logging.Event, level logging.Level) error {
-			ids := make([]uint64, setBuffer.Length)
-			ids = models.JobsToIds(setBuffer.Array, ids)
+			alertsBatches := buffers.ValuesOfSetBuffer(setBuffer)
+			amounts := make([]int, len(alertsBatches))
+			for i, alerts := range alertsBatches {
+				amounts[i] = len(alerts)
+			}
 
 			logfmt.Unsigneds(event, "jobs.ids", ids...)
+			logfmt.Integers(event, "jobs.alerts.amounts", amounts...)
 
 			return nil
 		},

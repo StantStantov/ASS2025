@@ -124,12 +124,12 @@ func (iw InfoWindow) View() string {
 
 	jobsBufferedAmount := sparsemap.Length(simulation.Buffer.Values)
 	jobsIds := make([]uint64, jobsBufferedAmount)
-	jobs := make([]models.Job, jobsBufferedAmount)
+	jobs := make([][]models.MachineInfo, jobsBufferedAmount)
 	sparsemap.GetAllFromSparseMap(simulation.Buffer.Values, jobsIds, jobs)
 	jobsAlertsAmounts := make([]int, len(jobs))
 	for i := range jobsAlertsAmounts {
 		job := jobs[i]
-		jobsAlertsAmounts[i] = len(job.Alerts)
+		jobsAlertsAmounts[i] = len(job)
 	}
 
 	fmt.Fprintf(iw.Buffer, "Buffer:\n")
