@@ -129,6 +129,7 @@ func PutBusyJobs(system *DispatchSystem, jobs ...models.Job) {
 	ids := make([]uint64, len(jobs))
 	ids = models.JobsToIds(jobs, ids)
 	pools.RemoveFromPool(system.AlertsPool, ids...)
+	buffer.ResetAlertsInBuffer(system.AlertsBuffer, ids...)
 
 	logging.GetThenSendInfo(
 		system.Logger,

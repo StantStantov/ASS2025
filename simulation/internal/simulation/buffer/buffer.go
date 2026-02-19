@@ -48,7 +48,6 @@ func AddIntoBuffer(system *BufferSystem, ids []models.AgentId, alertsBatches [][
 	system.Mutex.Lock()
 	defer system.Mutex.Unlock()
 
-	alertsTotal := uint64(0)
 	alertsAdded := uint64(0)
 	alertsSkipped := uint64(0)
 
@@ -68,7 +67,6 @@ func AddIntoBuffer(system *BufferSystem, ids []models.AgentId, alertsBatches [][
 
 			alertsAdded++
 		}
-		alertsTotal += uint64(len(alerts))
 	}
 
 	iterOldValues := bools.IterOnlyTrue[uint64](arePresent...)
@@ -84,7 +82,6 @@ func AddIntoBuffer(system *BufferSystem, ids []models.AgentId, alertsBatches [][
 				alertsSkipped++
 			}
 		}
-		alertsTotal += uint64(len(alerts))
 	}
 
 	movedIntoBuffer := make([]bool, minLength)
@@ -93,7 +90,6 @@ func AddIntoBuffer(system *BufferSystem, ids []models.AgentId, alertsBatches [][
 		panic(fmt.Sprintf("Save into Buffer %v %v", ids, movedIntoBuffer))
 	}
 
-	metrics.AddToMetric(system.Metrics, metrics.AlertsCounter, alertsAdded)
 	metrics.AddToMetric(system.Metrics, metrics.AlertsBufferedCounter, alertsAdded)
 	metrics.AddToMetric(system.Metrics, metrics.AlertsRewrittenCounter, alertsSkipped)
 
@@ -140,6 +136,39 @@ func GetMultipleFromBuffer(system *BufferSystem, setBuffer *buffers.SetBuffer[[]
 
 			logfmt.Unsigneds(event, "jobs.ids", ids...)
 			logfmt.Integers(event, "jobs.alerts.amounts", amounts...)
+
+			return nil
+		},
+	)
+}
+
+func ResetAlertsInBuffer(system *BufferSystem, ids ...uint64) {
+	system.Mutex.Lock()
+	defer system.Mutex.Unlock()
+
+	oksGet := make([]bool, len(ids))
+	alertBuffers := make([]buffers.SetBuffer[models.MachineInfo, uint64], len(ids))
+	alertBuffers, oksGet = sparsemap.GetFromSparseMap(system.Values, alertBuffers, oksGet, ids...)
+	if bools.AnyFalse(oksGet...) {
+		panic(fmt.Sprintf("Get Alerts to Reset from Buffer %v %v", ids, oksGet))
+	}
+
+	for i := range alertBuffers {
+		alertsBuffer := &alertBuffers[i]
+		buffers.ResetSetBuffer(alertsBuffer)
+	}
+
+	moveResetted := make([]bool, len(ids))
+	moveResetted = sparsemap.SaveIntoSparseMap(system.Values, moveResetted, ids, alertBuffers)
+	if bools.AnyFalse(moveResetted...) {
+		panic(fmt.Sprintf("Save Resetted Alerts into Buffer %v %v", ids, moveResetted))
+	}
+
+	logging.GetThenSendInfo(
+		system.Logger,
+		"resetted alerts in buffer",
+		func(event *logging.Event, level logging.Level) error {
+			logfmt.Unsigneds(event, "jobs.ids", ids...)
 
 			return nil
 		},

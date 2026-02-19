@@ -35,6 +35,7 @@ func Init(
 	agentsAmount uint64,
 	respondersAmount uint64,
 	chanceToCrash float32,
+	alertsCapacity uint64,
 	chanceToHandle float32,
 	logbuffer *framebuffer.Buffer,
 	logger *logging.Logger,
@@ -45,7 +46,7 @@ func Init(
 	)
 	bufferSystem := buffer.NewBufferSystem(
 		agentsAmount,
-		32,
+		alertsCapacity,
 		metricsSystem,
 		logger,
 	)

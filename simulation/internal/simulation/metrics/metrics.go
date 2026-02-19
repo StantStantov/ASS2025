@@ -13,7 +13,6 @@ const (
 	AgentsSilentCounter MetricType = iota
 	AgentsAlarmingCounter
 
-	AlertsCounter
 	AlertsBufferedCounter
 	AlertsRewrittenCounter
 
@@ -30,7 +29,6 @@ var MetricTypesNames = []string{
 	"agents_silent_total",
 	"agents_alarming_total",
 
-	"alerts_total",
 	"alerts_added_to_buffer_total",
 	"alerts_rewritten_in_buffer_total",
 

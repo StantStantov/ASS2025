@@ -189,27 +189,27 @@ func (iw InfoWindow) View() string {
 	fmt.Fprintf(iw.Buffer, "%s:%*.2f\n", "time_in_pool_seconds", spacesToPrint, timeAverage)
 
 	spacesToPrint = lineWidth - len("rewrite_percentage")
-	allAlertsAtomic := &simulation.MetricsSystem.Metrics[metrics.AlertsCounter]
-	skippedAlertsAtomic := &simulation.MetricsSystem.Metrics[metrics.AlertsRewrittenCounter]
+	allAlertsAtomic := &simulation.MetricsSystem.Metrics[metrics.AlertsBufferedCounter]
+	rewrittenAlertsAtomic := &simulation.MetricsSystem.Metrics[metrics.AlertsRewrittenCounter]
 	allAlerts := atomic.LoadUint64(allAlertsAtomic)
-	skippedAlerts := atomic.LoadUint64(skippedAlertsAtomic)
+	rewrittenAlerts := atomic.LoadUint64(rewrittenAlertsAtomic)
 	rewritePercentage := float64(0)
-	if allAlerts != 0 {
-		rewritePercentage = float64(skippedAlerts) / float64(allAlerts)
+	if rewrittenAlerts != 0 {
+		rewritePercentage = float64(rewrittenAlerts) / float64(allAlerts)
 	}
 	fmt.Fprintf(iw.Buffer, "%s:%*.2f\n", "rewrite_percentage", spacesToPrint, rewritePercentage)
 
-	spacesToPrint = lineWidth - len("rejection_percentage")
+	spacesToPrint = lineWidth - len("duplicate_percentage")
 	addedJobsAtomic := &simulation.MetricsSystem.Metrics[metrics.JobsPendingCounter]
 	skippedJobsAtomic := &simulation.MetricsSystem.Metrics[metrics.JobsSkippedCounter]
 	addedJobs := atomic.LoadUint64(addedJobsAtomic)
 	skippedJobs := atomic.LoadUint64(skippedJobsAtomic)
 	allJobs := addedJobs + skippedJobs
-	rejectionPercentage := float64(0)
+	duplicatePercentage := float64(0)
 	if skippedJobs != 0 {
-		rejectionPercentage = float64(skippedJobs) / float64(allJobs)
+		duplicatePercentage = float64(skippedJobs) / float64(allJobs)
 	}
-	fmt.Fprintf(iw.Buffer, "%s:%*.2f\n", "rejection_percentage", spacesToPrint, rejectionPercentage)
+	fmt.Fprintf(iw.Buffer, "%s:%*.2f\n", "duplicate_percentage", spacesToPrint, duplicatePercentage)
 
 	spacesToPrint = lineWidth - len("load_percentage")
 	freeRespsAtomic := &simulation.MetricsSystem.Metrics[metrics.RespondersFreeCounter]

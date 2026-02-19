@@ -31,16 +31,18 @@ func main() {
 
 	msPerUpdate := float64(0.100)
 	agentsAmount := uint64(8)
-	respondersAmount := uint64(2)
-	chanceToCrash := float32(0.8)
-	chanceToHandle := float32(0.1)
+	respondersAmount := uint64(4)
+	minChanceToCrash := float32(0.5)
+	alertsCapacity := uint64(16)
+	minChanceToHandle := float32(0.9)
 
 	simulation.Init(
 		msPerUpdate,
 		agentsAmount,
 		respondersAmount,
-		chanceToCrash,
-		chanceToHandle,
+		minChanceToCrash,
+		alertsCapacity,
+		minChanceToHandle,
 		logBuffer,
 		logger,
 	)
