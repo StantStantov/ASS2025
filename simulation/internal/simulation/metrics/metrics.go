@@ -12,12 +12,16 @@ type MetricType uint8
 const (
 	AgentsSilentCounter MetricType = iota
 	AgentsAlarmingCounter
-	JobsBufferedCounter
+
+	AlertsCounter
+	AlertsBufferedCounter
+	AlertsRewrittenCounter
+
 	JobsPendingCounter
 	JobsSkippedCounter
 	JobsLockedCounter
 	JobsUnlockedCounter
-	AlertsBufferedCounter
+
 	RespondersFreeCounter
 	RespondersBusyCounter
 )
@@ -25,18 +29,22 @@ const (
 var MetricTypesNames = []string{
 	"agents_silent_total",
 	"agents_alarming_total",
-	"jobs_added_to_buffer_total",
+
+	"alerts_total",
+	"alerts_added_to_buffer_total",
+	"alerts_rewritten_in_buffer_total",
+
 	"jobs_added_to_pool_total",
 	"jobs_skipped_pool_total",
 	"jobs_locked_total",
 	"jobs_unlocked_total",
-	"alerts_added_to_buffer_total",
+
 	"responders_free_total",
 	"responders_busy_total",
 }
 
 type MetricsSystem struct {
-	Metrics []*atomic.Uint64
+	Metrics []atomic.Uint64
 
 	Logger *logging.Logger
 }
@@ -51,9 +59,10 @@ func NewMetricsSystem(
 ) *MetricsSystem {
 	system := &MetricsSystem{}
 
-	system.Metrics = make([]*atomic.Uint64, len(MetricTypesNames))
+	system.Metrics = make([]atomic.Uint64, len(MetricTypesNames))
 	for i := range system.Metrics {
-		system.Metrics[i] = atomic.NewUint64(0)
+		atomicValue := &system.Metrics[i]
+		atomic.StoreUint64(atomicValue, 0)
 	}
 
 	system.Logger = logging.NewChildLogger(logger, func(event *logging.Event) {
@@ -67,7 +76,7 @@ func GetMetrics(system *MetricsSystem, setMetricBuffer []Metric) []Metric {
 	minLength := min(len(setMetricBuffer), len(MetricTypesNames), len(system.Metrics))
 	for i := range minLength {
 		name := MetricTypesNames[i]
-		atomicValue := system.Metrics[i]
+		atomicValue := &system.Metrics[i]
 		value := atomic.LoadUint64(atomicValue)
 
 		metric := Metric{
@@ -81,6 +90,6 @@ func GetMetrics(system *MetricsSystem, setMetricBuffer []Metric) []Metric {
 }
 
 func AddToMetric(system *MetricsSystem, metric MetricType, value uint64) {
-	atomicValue := system.Metrics[metric]
+	atomicValue := &system.Metrics[metric]
 	atomic.AddUint64(atomicValue, value)
 }

@@ -14,7 +14,7 @@ import (
 )
 
 type BufferSystem struct {
-	Values         *sparsemap.SparseMap[uint64, []models.MachineInfo]
+	Values         *sparsemap.SparseMap[uint64, buffers.SetBuffer[models.MachineInfo, uint64]]
 	AlertsCapacity uint64
 
 	Mutex *sync.Mutex
@@ -25,14 +25,14 @@ type BufferSystem struct {
 
 func NewBufferSystem(
 	capacity uint64,
-	AlertsCapacity uint64,
+	alertsCapacity uint64,
 	metrics *metrics.MetricsSystem,
 	logger *logging.Logger,
 ) *BufferSystem {
 	system := &BufferSystem{}
 
-	system.Values = sparsemap.NewSparseMap[uint64, []models.MachineInfo](capacity)
-	system.AlertsCapacity = AlertsCapacity
+	system.Values = sparsemap.NewSparseMap[uint64, buffers.SetBuffer[models.MachineInfo, uint64]](capacity)
+	system.AlertsCapacity = alertsCapacity
 
 	system.Mutex = &sync.Mutex{}
 
@@ -48,39 +48,54 @@ func AddIntoBuffer(system *BufferSystem, ids []models.AgentId, alertsBatches [][
 	system.Mutex.Lock()
 	defer system.Mutex.Unlock()
 
+	alertsTotal := uint64(0)
+	alertsAdded := uint64(0)
+	alertsSkipped := uint64(0)
+
 	minLength := min(len(ids), len(alertsBatches))
-	values := make([][]models.MachineInfo, minLength)
+	alertBuffers := make([]buffers.SetBuffer[models.MachineInfo, uint64], minLength)
 	arePresent := make([]bool, minLength)
-	values, arePresent = sparsemap.GetFromSparseMap(system.Values, values, arePresent, ids...)
+	alertBuffers, arePresent = sparsemap.GetFromSparseMap(system.Values, alertBuffers, arePresent, ids...)
 
 	iterNewValues := bools.IterOnlyFalse[uint64](arePresent...)
 	for i := range iterNewValues {
-		values[i] = alertsBatches[i]
+		alerts := alertsBatches[i]
+
+		bufferNew := &alertBuffers[i]
+		bufferNew.Array = make([]models.MachineInfo, system.AlertsCapacity)
+		for _, alert := range alerts {
+			buffers.AppendToSetBuffer(bufferNew, alert)
+
+			alertsAdded++
+		}
+		alertsTotal += uint64(len(alerts))
 	}
 
 	iterOldValues := bools.IterOnlyTrue[uint64](arePresent...)
 	for i := range iterOldValues {
-		newValue := alertsBatches[i]
-		oldValue := values[i]
+		alerts := alertsBatches[i]
 
-		oldValue = append(oldValue, newValue...)
-		values[i] = oldValue
+		bufferOld := &alertBuffers[i]
+		for _, alert := range alerts {
+			if bufferOld.Length != uint64(len(bufferOld.Array)) {
+				buffers.AppendToSetBuffer(bufferOld, alert)
+				alertsAdded++
+			} else {
+				alertsSkipped++
+			}
+		}
+		alertsTotal += uint64(len(alerts))
 	}
 
 	movedIntoBuffer := make([]bool, minLength)
-	movedIntoBuffer = sparsemap.SaveIntoSparseMap(system.Values, movedIntoBuffer, ids, values)
+	movedIntoBuffer = sparsemap.SaveIntoSparseMap(system.Values, movedIntoBuffer, ids, alertBuffers)
 	if bools.AnyFalse(movedIntoBuffer...) {
 		panic(fmt.Sprintf("Save into Buffer %v %v", ids, movedIntoBuffer))
 	}
 
-	idsAdded := bools.CountFalse[uint64](arePresent...)
-	alertsAdded := uint64(0)
-	for _, alerts := range alertsBatches {
-		alertsAdded += uint64(len(alerts))
-	}
-
-	metrics.AddToMetric(system.Metrics, metrics.JobsBufferedCounter, idsAdded)
+	metrics.AddToMetric(system.Metrics, metrics.AlertsCounter, alertsAdded)
 	metrics.AddToMetric(system.Metrics, metrics.AlertsBufferedCounter, alertsAdded)
+	metrics.AddToMetric(system.Metrics, metrics.AlertsRewrittenCounter, alertsSkipped)
 
 	logging.GetThenSendInfo(
 		system.Logger,
@@ -103,9 +118,15 @@ func GetMultipleFromBuffer(system *BufferSystem, setBuffer *buffers.SetBuffer[[]
 	system.Mutex.Lock()
 	defer system.Mutex.Unlock()
 
-	oksGet := make([]bool, len(setBuffer.Array))
-	setBuffer.Array, oksGet = sparsemap.GetFromSparseMap(system.Values, setBuffer.Array, oksGet, ids...)
-	setBuffer.Length += uint64(len(setBuffer.Array))
+	oksGet := make([]bool, cap(setBuffer.Array))
+	alertBuffers := make([]buffers.SetBuffer[models.MachineInfo, uint64], cap(setBuffer.Array))
+	alertBuffers, oksGet = sparsemap.GetFromSparseMap(system.Values, alertBuffers, oksGet, ids...)
+
+	for i := range alertBuffers {
+		alertBuffer := &alertBuffers[i]
+		alerts := buffers.ValuesOfSetBuffer(alertBuffer)
+		buffers.AppendToSetBuffer(setBuffer, alerts)
+	}
 
 	logging.GetThenSendInfo(
 		system.Logger,

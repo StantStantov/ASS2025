@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/StantStantov/rps/swamp/atomic"
+	"github.com/StantStantov/rps/swamp/behaivors/buffers"
 	"github.com/StantStantov/rps/swamp/collections/sparsemap"
 	"github.com/StantStantov/rps/swamp/collections/sparseset"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -124,12 +125,12 @@ func (iw InfoWindow) View() string {
 
 	jobsBufferedAmount := sparsemap.Length(simulation.Buffer.Values)
 	jobsIds := make([]uint64, jobsBufferedAmount)
-	jobs := make([][]models.MachineInfo, jobsBufferedAmount)
+	jobs := make([]buffers.SetBuffer[models.MachineInfo, uint64], jobsBufferedAmount)
 	sparsemap.GetAllFromSparseMap(simulation.Buffer.Values, jobsIds, jobs)
-	jobsAlertsAmounts := make([]int, len(jobs))
+	jobsAlertsAmounts := make([]uint64, len(jobs))
 	for i := range jobsAlertsAmounts {
 		job := jobs[i]
-		jobsAlertsAmounts[i] = len(job)
+		jobsAlertsAmounts[i] = job.Length
 	}
 
 	fmt.Fprintf(iw.Buffer, "Buffer:\n")
@@ -188,8 +189,8 @@ func (iw InfoWindow) View() string {
 	fmt.Fprintf(iw.Buffer, "%s:%*.2f\n", "time_in_pool_seconds", spacesToPrint, timeAverage)
 
 	spacesToPrint = lineWidth - len("rejection_percentage")
-	addedJobsAtomic := simulation.MetricsSystem.Metrics[metrics.JobsPendingCounter]
-	skippedJobsAtomic := simulation.MetricsSystem.Metrics[metrics.JobsSkippedCounter]
+	addedJobsAtomic := &simulation.MetricsSystem.Metrics[metrics.JobsPendingCounter]
+	skippedJobsAtomic := &simulation.MetricsSystem.Metrics[metrics.JobsSkippedCounter]
 	addedJobs := atomic.LoadUint64(addedJobsAtomic)
 	skippedJobs := atomic.LoadUint64(skippedJobsAtomic)
 	allJobs := addedJobs + skippedJobs
@@ -200,8 +201,8 @@ func (iw InfoWindow) View() string {
 	fmt.Fprintf(iw.Buffer, "%s:%*.2f\n", "rejection_percentage", spacesToPrint, rejectionPercentage)
 
 	spacesToPrint = lineWidth - len("load_percentage")
-	freeRespsAtomic := simulation.MetricsSystem.Metrics[metrics.RespondersFreeCounter]
-	busyRespsAtomic := simulation.MetricsSystem.Metrics[metrics.RespondersBusyCounter]
+	freeRespsAtomic := &simulation.MetricsSystem.Metrics[metrics.RespondersFreeCounter]
+	busyRespsAtomic := &simulation.MetricsSystem.Metrics[metrics.RespondersBusyCounter]
 	freeResps := atomic.LoadUint64(freeRespsAtomic)
 	busyResps := atomic.LoadUint64(busyRespsAtomic)
 	allResps := freeResps + busyResps
