@@ -5,6 +5,7 @@ import (
 	"StantStantov/ASS/internal/simulation/framebuffer"
 	"StantStantov/ASS/internal/ui"
 	"fmt"
+	"io"
 	"os"
 	"runtime/debug"
 
@@ -13,11 +14,16 @@ import (
 )
 
 func main() {
+	logFile, err :=os.Create(".logs")
+	if err != nil {
+		panic(err)
+	}
+
 	logBuffer := &framebuffer.Buffer{}
 	framebuffer.InitBuffer(logBuffer)
 
 	logger := logging.NewLogger(
-		logBuffer,
+		io.MultiWriter(logBuffer, logFile),
 		logfmt.MainFormat,
 		logging.LevelDebug,
 		256,
@@ -26,8 +32,8 @@ func main() {
 	msPerUpdate := float64(0.100)
 	agentsAmount := uint64(8)
 	respondersAmount := uint64(2)
-	chanceToCrash := float32(0.5)
-	chanceToHandle := float32(0.9)
+	chanceToCrash := float32(0.8)
+	chanceToHandle := float32(0.1)
 
 	simulation.Init(
 		msPerUpdate,

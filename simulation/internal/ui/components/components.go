@@ -188,6 +188,17 @@ func (iw InfoWindow) View() string {
 	}
 	fmt.Fprintf(iw.Buffer, "%s:%*.2f\n", "time_in_pool_seconds", spacesToPrint, timeAverage)
 
+	spacesToPrint = lineWidth - len("rewrite_percentage")
+	allAlertsAtomic := &simulation.MetricsSystem.Metrics[metrics.AlertsCounter]
+	skippedAlertsAtomic := &simulation.MetricsSystem.Metrics[metrics.AlertsRewrittenCounter]
+	allAlerts := atomic.LoadUint64(allAlertsAtomic)
+	skippedAlerts := atomic.LoadUint64(skippedAlertsAtomic)
+	rewritePercentage := float64(0)
+	if allAlerts != 0 {
+		rewritePercentage = float64(skippedAlerts) / float64(allAlerts)
+	}
+	fmt.Fprintf(iw.Buffer, "%s:%*.2f\n", "rewrite_percentage", spacesToPrint, rewritePercentage)
+
 	spacesToPrint = lineWidth - len("rejection_percentage")
 	addedJobsAtomic := &simulation.MetricsSystem.Metrics[metrics.JobsPendingCounter]
 	skippedJobsAtomic := &simulation.MetricsSystem.Metrics[metrics.JobsSkippedCounter]

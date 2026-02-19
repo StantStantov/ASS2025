@@ -173,6 +173,7 @@ func RemoveFromPool(system *PoolSystem, ids ...uint64) {
 	idsToRemove := make([]uint64, toRemoveAmount)
 	idsBuffer := &buffers.SetBuffer[uint64, uint64]{Array: idsToRemove}
 	filters.KeepIfTrue(idsBuffer, ids, arePresent)
+
 	nodesToRemove := make([]*poolNode, toRemoveAmount)
 	nodesBuffer := &buffers.SetBuffer[*poolNode, uint64]{Array: nodesToRemove}
 	filters.KeepIfTrue(nodesBuffer, nodes, arePresent)

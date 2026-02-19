@@ -107,8 +107,8 @@ func GetFreeJobs(system *DispatchSystem, setBuffer *buffers.SetBuffer[models.Job
 			}
 
 			logfmt.Unsigned(event, "jobs.returned_amount", setBuffer.Length)
-			logfmt.Unsigneds(event, "jobs.ids", ids...)
-			logfmt.Integers(event, "jobs.alerts.amounts", amounts...)
+			logfmt.Unsigneds(event, "jobs.ids", ids[:minLength]...)
+			logfmt.Integers(event, "jobs.alerts.amounts", amounts[:minLength]...)
 
 			return nil
 		},

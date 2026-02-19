@@ -68,11 +68,12 @@ func ProcessRespondersSystem(system *RespondersSystem) {
 	respondersFree := make([]models.ResponderId, amountFree)
 	respondersFree = sparseset.GetAllFromSparseSet(system.Free, respondersFree)
 
-	jobsToBusy := make([]models.Job, amountFree)
-	jobsToBusyBuffer := &buffers.SetBuffer[models.Job, uint64]{Array: jobsToBusy}
-	dispatchers.GetFreeJobs(system.Dispatcher, jobsToBusyBuffer)
+	jobsToGet := make([]models.Job, amountFree)
+	jobsToGetBuffer := &buffers.SetBuffer[models.Job, uint64]{Array: jobsToGet}
+	dispatchers.GetFreeJobs(system.Dispatcher, jobsToGetBuffer)
 
-	minLength := uint64(len(jobsToBusy))
+	minLength := jobsToGetBuffer.Length
+	jobsToBusy := buffers.ValuesOfSetBuffer(jobsToGetBuffer)
 	respondersToBusy := respondersFree[:minLength]
 
 	removedFromFree := make([]bool, minLength)
