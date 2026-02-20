@@ -19,6 +19,7 @@ type AgentSystem struct {
 
 	Silent  []models.AgentId
 	Alarmed []models.AgentId
+	Created []uint64
 
 	Dispatcher *dispatchers.DispatchSystem
 
@@ -43,6 +44,7 @@ func NewAgentSystem(
 
 	system.Silent = []models.AgentId{}
 	system.Alarmed = []models.AgentId{}
+	system.Created = make([]uint64, capacity)
 
 	system.Dispatcher = dispatcher
 
@@ -58,7 +60,7 @@ func ProcessAgentSystem(system *AgentSystem) {
 	areAlarmed := make([]bool, len(system.AgentsIds))
 	for i := range areAlarmed {
 		currentChance := rand.Float32()
-		alarmed := currentChance >= system.MinChanceToCrash
+		alarmed := currentChance > system.MinChanceToCrash
 		areAlarmed[i] = alarmed
 	}
 
@@ -74,6 +76,7 @@ func ProcessAgentSystem(system *AgentSystem) {
 		machineInfo := models.MachineInfo{Id: id}
 
 		alerts[i] = []models.MachineInfo{machineInfo}
+		system.Created[id]++
 	}
 
 	dispatchers.SaveAlerts(system.Dispatcher, alarmedAgents, alerts)

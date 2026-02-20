@@ -34,8 +34,8 @@ var MetricTypesNames = []string{
 
 	"jobs_added_to_pool_total",
 	"jobs_skipped_pool_total",
-	"jobs_locked_total",
-	"jobs_unlocked_total",
+	"jobs_started_total",
+	"jobs_finished_total",
 
 	"responders_free_total",
 	"responders_busy_total",

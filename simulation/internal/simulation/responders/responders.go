@@ -1,6 +1,7 @@
 package responders
 
 import (
+	ptime "StantStantov/ASS/internal/common/time"
 	"StantStantov/ASS/internal/simulation/dispatchers"
 	"StantStantov/ASS/internal/simulation/metrics"
 	"StantStantov/ASS/internal/simulation/models"
@@ -21,10 +22,16 @@ type RespondersSystem struct {
 	RespondersInfo    []models.ResponderInfo
 	MinChanceToHandle float32
 
+	Dispatcher *dispatchers.DispatchSystem
+
 	Free *sparseset.SparseSet[models.ResponderId]
 	Busy *sparsemap.SparseMap[models.ResponderId, models.Job]
 
-	Dispatcher *dispatchers.DispatchSystem
+	Handled            []uint64
+	All                []uint64
+	TimestampsLocked   *sparsemap.SparseMap[uint64, float64]
+	TimestampsUnlocked *sparsemap.SparseMap[uint64, float64]
+	TimeUnlocked       *sparsemap.SparseMap[uint64, float64]
 
 	Metrics *metrics.MetricsSystem
 	Logger  *logging.Logger
@@ -54,6 +61,12 @@ func NewRespondersSystem(
 	oksAdded = sparseset.AddIntoSparseSet(system.Free, oksAdded, system.Responders...)
 
 	system.Dispatcher = dispatcher
+
+	system.Handled = make([]uint64, capacity)
+	system.All = make([]uint64, capacity)
+	system.TimestampsLocked = sparsemap.NewSparseMap[uint64, float64](capacity)
+	system.TimestampsUnlocked = sparsemap.NewSparseMap[uint64, float64](capacity)
+	system.TimeUnlocked = sparsemap.NewSparseMap[uint64, float64](capacity)
 
 	system.Metrics = metrics
 	system.Logger = logging.NewChildLogger(logger, func(event *logging.Event) {
@@ -86,6 +99,18 @@ func ProcessRespondersSystem(system *RespondersSystem) {
 	addedToBusy = sparsemap.AddIntoSparseMap(system.Busy, addedToBusy, respondersToBusy, jobsToBusy)
 	if bools.AnyFalse(addedToBusy...) {
 		panic(fmt.Sprintf("Add Busyed to Busy %v %v", respondersToBusy, addedToBusy))
+	}
+
+	lockTime := ptime.TimeNowInSeconds()
+	timestampsLocked := make([]float64, minLength)
+	for i := range timestampsLocked {
+		timestampsLocked[i] = lockTime
+	}
+
+	addTimestampsLocked := make([]bool, minLength)
+	addTimestampsLocked = sparsemap.SaveIntoSparseMap(system.TimestampsLocked, addTimestampsLocked, respondersToBusy, timestampsLocked)
+	if bools.AnyFalse(addTimestampsLocked...) {
+		panic(fmt.Sprintf("Added Timestamps Locked %v %v", respondersToBusy, addTimestampsLocked))
 	}
 
 	logging.GetThenSendInfo(
@@ -139,6 +164,40 @@ func ProcessRespondersSystem(system *RespondersSystem) {
 	oksAddedFreed = sparseset.AddIntoSparseSet(system.Free, oksAddedFreed, respondersFreed...)
 	if bools.AnyFalse(oksAddedFreed...) {
 		panic(fmt.Sprintf("Add Freed To Free %v %v", respondersFreed, oksAddedFreed))
+	}
+
+	for _, id := range system.Responders {
+		system.All[id]++
+	}
+	for _, id := range respondersFreed {
+		system.Handled[id]++
+	}
+
+	getTimestamps := make([]bool, len(respondersFreed))
+	timestampsLockedAgain := make([]float64, len(respondersFreed))
+	timestampsLockedAgain, getTimestamps = sparsemap.GetFromSparseMap(system.TimestampsLocked, timestampsLockedAgain, getTimestamps, respondersFreed...)
+	if bools.AnyFalse(getTimestamps...) {
+		panic(fmt.Sprintf("Get Timestamps Locked AGAIN %v %v", respondersFreed, getTimestamps))
+	}
+
+	unlockTime := ptime.TimeNowInSeconds()
+	timestampsUnlocked := make([]float64, len(respondersFreed))
+	timeSpentHandling := make([]float64, len(respondersFreed))
+	for i := range timestampsUnlocked {
+		timestampsUnlocked[i] = unlockTime
+		timeSpentHandling[i] = unlockTime - timestampsLockedAgain[i]
+	}
+
+	addTimestampsUnlocked := make([]bool, minLength)
+	addTimestampsUnlocked = sparsemap.SaveIntoSparseMap(system.TimestampsUnlocked, addTimestampsUnlocked, respondersFreed, timestampsUnlocked)
+	if bools.AnyFalse(addTimestampsUnlocked...) {
+		panic(fmt.Sprintf("Added Timestamps Unlocked %v %v", respondersFreed, addTimestampsUnlocked))
+	}
+
+	addTimeUnlocked := make([]bool, minLength)
+	addTimeUnlocked = sparsemap.SaveIntoSparseMap(system.TimeUnlocked, addTimeUnlocked, respondersFreed, timeSpentHandling)
+	if bools.AnyFalse(addTimestampsUnlocked...) {
+		panic(fmt.Sprintf("Added Timestamps Unlocked %v %v", respondersFreed, addTimeUnlocked))
 	}
 
 	metrics.AddToMetric(system.Metrics, metrics.RespondersFreeCounter, FreeAmount(system))

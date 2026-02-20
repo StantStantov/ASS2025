@@ -17,10 +17,16 @@ import (
 )
 
 type PoolSystem struct {
-	Queue      *doublyList
-	Present    *sparsemap.SparseMap[uint64, *poolNode]
-	Locked     *sparseset.SparseSet[uint64]
-	Timestamps *sparsemap.SparseMap[uint64, float64]
+	Queue   *doublyList
+	Present *sparsemap.SparseMap[uint64, *poolNode]
+	Locked  *sparseset.SparseSet[uint64]
+
+	TimestampsAdded    *sparsemap.SparseMap[uint64, float64]
+	TimestampsLocked   *sparsemap.SparseMap[uint64, float64]
+	TimestampsUnlocked *sparsemap.SparseMap[uint64, float64]
+
+	TimeLocked   *sparsemap.SparseMap[uint64, float64]
+	TimeUnlocked *sparsemap.SparseMap[uint64, float64]
 
 	PoppedAmount    uint64
 	SpentTimeInPool float64
@@ -41,7 +47,12 @@ func NewPoolSystem(
 	system.Queue = &doublyList{}
 	system.Present = sparsemap.NewSparseMap[uint64, *poolNode](capacity)
 	system.Locked = sparseset.NewSparseSet(capacity)
-	system.Timestamps = sparsemap.NewSparseMap[uint64, float64](capacity)
+
+	system.TimestampsAdded = sparsemap.NewSparseMap[uint64, float64](capacity)
+	system.TimestampsLocked = sparsemap.NewSparseMap[uint64, float64](capacity)
+	system.TimestampsUnlocked = sparsemap.NewSparseMap[uint64, float64](capacity)
+	system.TimeLocked = sparsemap.NewSparseMap[uint64, float64](capacity)
+	system.TimeUnlocked = sparsemap.NewSparseMap[uint64, float64](capacity)
 
 	system.Mutex = &sync.Mutex{}
 
@@ -81,6 +92,18 @@ func MoveIfNewIntoPool(system *PoolSystem, ids []models.AgentId) {
 	movedIntoPool = sparsemap.AddIntoSparseMap(system.Present, movedIntoPool, idsFiltered, nodesFiltered)
 	if bools.AnyFalse(movedIntoPool...) {
 		panic(fmt.Sprintf("Add into Pool %v %v", idsFiltered, movedIntoPool))
+	}
+
+	addTime := ptime.TimeNowInSeconds()
+	timestamps := make([]float64, idsNewAmount)
+	for i := range timestamps {
+		timestamps[i] = addTime
+	}
+
+	addTimestamps := make([]bool, idsNewAmount)
+	addTimestamps = sparsemap.SaveIntoSparseMap(system.TimestampsAdded, addTimestamps, idsFiltered, timestamps)
+	if bools.AnyFalse(addTimestamps...) {
+		panic(fmt.Sprintf("Added Timestamps %v %v", idsFiltered, addTimestamps))
 	}
 
 	metrics.AddToMetric(system.Metrics, metrics.JobsPendingCounter, idsNewAmount)
@@ -127,24 +150,40 @@ func GetFromPool(system *PoolSystem, setBuffer *buffers.SetBuffer[uint64, uint64
 	areLocked = sparseset.PresentInSparseSet(system.Locked, areLocked, allIds...)
 
 	filters.KeepIfFalse(setBuffer, allIds, areLocked)
+	idsFiltered := buffers.ValuesOfSetBuffer(setBuffer)
 
 	jobsToLockAmount := setBuffer.Length
 	lockedJobs := make([]bool, jobsToLockAmount)
-	lockedJobs = sparseset.AddIntoSparseSet(system.Locked, lockedJobs, setBuffer.Array...)
+	lockedJobs = sparseset.AddIntoSparseSet(system.Locked, lockedJobs, idsFiltered...)
 	if bools.AnyFalse(lockedJobs...) {
-		panic(fmt.Sprintf("Lock Pool Jobs %v %v", setBuffer, lockedJobs))
+		panic(fmt.Sprintf("Lock Pool Jobs %v %v", idsFiltered, lockedJobs))
 	}
 
-	addTime := ptime.TimeNowInSeconds()
-	timestamps := make([]float64, jobsToLockAmount)
-	for i := range timestamps {
-		timestamps[i] = addTime
+	getTimestamps := make([]bool, jobsToLockAmount)
+	timestampsAdded := make([]float64, jobsToLockAmount)
+	timestampsAdded, getTimestamps = sparsemap.GetFromSparseMap(system.TimestampsAdded, timestampsAdded, getTimestamps, idsFiltered...)
+	if bools.AnyFalse(getTimestamps...) {
+		panic(fmt.Sprintf("Get Timestamps Added %v %v", idsFiltered, getTimestamps))
 	}
 
-	addTimestamps := make([]bool, jobsToLockAmount)
-	sparsemap.SaveIntoSparseMap(system.Timestamps, addTimestamps, setBuffer.Array, timestamps)
-	if bools.AnyFalse(lockedJobs...) {
-		panic(fmt.Sprintf("Added Timestamps %v %v", setBuffer, lockedJobs))
+	lockTime := ptime.TimeNowInSeconds()
+	timestampsLocked := make([]float64, jobsToLockAmount)
+	timeLocked := make([]float64, jobsToLockAmount)
+	for i := range timestampsLocked {
+		timestampsLocked[i] = lockTime
+		timeLocked[i] = lockTime - timestampsAdded[i]
+	}
+
+	addTimestampsLocked := make([]bool, jobsToLockAmount)
+	addTimestampsLocked = sparsemap.SaveIntoSparseMap(system.TimestampsLocked, addTimestampsLocked, idsFiltered, timestampsLocked)
+	if bools.AnyFalse(addTimestampsLocked...) {
+		panic(fmt.Sprintf("Added Timestamps Locked %v %v", idsFiltered, lockedJobs))
+	}
+
+	addTimeLocked := make([]bool, jobsToLockAmount)
+	addTimeLocked = sparsemap.SaveIntoSparseMap(system.TimeLocked, addTimeLocked, idsFiltered, timeLocked)
+	if bools.AnyFalse(addTimeLocked...) {
+		panic(fmt.Sprintf("Added Time Locked %v %v", idsFiltered, lockedJobs))
 	}
 
 	metrics.AddToMetric(system.Metrics, metrics.JobsLockedCounter, jobsToLockAmount)
@@ -154,6 +193,7 @@ func GetFromPool(system *PoolSystem, setBuffer *buffers.SetBuffer[uint64, uint64
 		"got pending jobs from pool",
 		func(event *logging.Event, level logging.Level) error {
 			logfmt.Unsigneds(event, "jobs.ids", setBuffer.Array...)
+			logfmt.Floats64(event, "jobs.time", timestampsLocked...)
 
 			return nil
 		},
@@ -195,19 +235,32 @@ func RemoveFromPool(system *PoolSystem, ids ...uint64) {
 	metrics.AddToMetric(system.Metrics, metrics.JobsUnlockedCounter, toRemoveAmount)
 
 	getTimestamps := make([]bool, toRemoveAmount)
-	timestampsPut := make([]float64, toRemoveAmount)
-	sparsemap.GetFromSparseMap(system.Timestamps, timestampsPut, getTimestamps, idsToRemove...)
+	timestampsLocked := make([]float64, toRemoveAmount)
+	timestampsLocked, getTimestamps = sparsemap.GetFromSparseMap(system.TimestampsLocked, timestampsLocked, getTimestamps, idsToRemove...)
 	if bools.AnyFalse(getTimestamps...) {
-		panic(fmt.Sprintf("Get Timestamps %v %v", idsToRemove, getTimestamps))
+		panic(fmt.Sprintf("Get Timestamps Locked %v %v", idsToRemove, getTimestamps))
 	}
 
 	timestampPopped := ptime.TimeNowInSeconds()
-	timestampSpentInPool := float64(0)
-	for i := range timestampsPut {
-		timestampSpentInPool += timestampPopped - timestampsPut[i]
+	timestamps := make([]float64, toRemoveAmount)
+	timeSpentHandling := make([]float64, toRemoveAmount)
+	for i := range idsToRemove {
+		timestamps[i] = timestampPopped
+		timeSpentHandling[i] = timestampPopped - timestampsLocked[i]
 	}
 
-	system.SpentTimeInPool += timestampSpentInPool
+	saveTimestamps := make([]bool, toRemoveAmount)
+	saveTimestamps = sparsemap.SaveIntoSparseMap(system.TimestampsUnlocked, saveTimestamps, idsToRemove, timestamps)
+	if bools.AnyFalse(saveTimestamps...) {
+		panic(fmt.Sprintf("Added Timestamps Unlocked %v %v", idsToRemove, saveTimestamps))
+	}
+
+	addTimeUnlocked := make([]bool, toRemoveAmount)
+	addTimeUnlocked = sparsemap.SaveIntoSparseMap(system.TimeLocked, addTimeUnlocked, idsToRemove, timeSpentHandling)
+	if bools.AnyFalse(addTimeUnlocked...) {
+		panic(fmt.Sprintf("Added Time Unlocked %v %v", idsToRemove, addTimeUnlocked))
+	}
+
 	system.PoppedAmount += toRemoveAmount
 
 	logging.GetThenSendInfo(
@@ -215,6 +268,7 @@ func RemoveFromPool(system *PoolSystem, ids ...uint64) {
 		"removed finished jobs from pool",
 		func(event *logging.Event, level logging.Level) error {
 			logfmt.Unsigneds(event, "jobs.ids", idsToRemove...)
+			logfmt.Floats64(event, "jobs.time", timeSpentHandling...)
 
 			return nil
 		},

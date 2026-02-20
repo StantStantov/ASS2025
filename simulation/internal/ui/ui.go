@@ -40,3 +40,7 @@ func StopEventLoop() {
 	Tea.Quit()
 	Tea.Wait()
 }
+
+func DrawFinalTable() {
+	components.DrawTable()
+}

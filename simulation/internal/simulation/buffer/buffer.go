@@ -17,6 +17,8 @@ type BufferSystem struct {
 	Values         *sparsemap.SparseMap[uint64, buffers.SetBuffer[models.MachineInfo, uint64]]
 	AlertsCapacity uint64
 
+	Rewritten []uint64
+
 	Mutex *sync.Mutex
 
 	Metrics *metrics.MetricsSystem
@@ -33,6 +35,8 @@ func NewBufferSystem(
 
 	system.Values = sparsemap.NewSparseMap[uint64, buffers.SetBuffer[models.MachineInfo, uint64]](capacity)
 	system.AlertsCapacity = alertsCapacity
+
+	system.Rewritten = make([]uint64, capacity)
 
 	system.Mutex = &sync.Mutex{}
 
@@ -71,6 +75,7 @@ func AddIntoBuffer(system *BufferSystem, ids []models.AgentId, alertsBatches [][
 
 	iterOldValues := bools.IterOnlyTrue[uint64](arePresent...)
 	for i := range iterOldValues {
+		id := ids[i]
 		alerts := alertsBatches[i]
 
 		bufferOld := &alertBuffers[i]
@@ -80,6 +85,7 @@ func AddIntoBuffer(system *BufferSystem, ids []models.AgentId, alertsBatches [][
 				alertsAdded++
 			} else {
 				alertsSkipped++
+				system.Rewritten[id]++
 			}
 		}
 	}

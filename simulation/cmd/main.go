@@ -30,11 +30,11 @@ func main() {
 	)
 
 	msPerUpdate := float64(0.100)
-	agentsAmount := uint64(8)
-	respondersAmount := uint64(4)
-	minChanceToCrash := float32(0.5)
-	alertsCapacity := uint64(16)
-	minChanceToHandle := float32(0.9)
+	agentsAmount := uint64(10)
+	respondersAmount := uint64(20)
+	minChanceToCrash := float32(0.1)
+	alertsCapacity := uint64(32)
+	minChanceToHandle := float32(0.95)
 
 	simulation.Init(
 		msPerUpdate,
@@ -61,4 +61,6 @@ func main() {
 		simulation.RunEventLoop()
 	}()
 	ui.RunEventLoop()
+
+	ui.DrawFinalTable()
 }
